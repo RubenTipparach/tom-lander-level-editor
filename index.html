@@ -199,6 +199,17 @@
 <input id="fileAskPng" type="file" accept=".png,image/png" hidden>
 <input id="fileAskJson" type="file" accept=".json,application/json" hidden>
 
+<dialog id="askFileDialog">
+  <form method="dialog">
+    <h3 id="askFileTitle">Choose a file</h3>
+    <p class="hint" id="askFileMessage"></p>
+    <menu>
+      <button value="cancel" type="submit">Cancel</button>
+      <button value="pick" id="askFilePickBtn" type="button">Choose File&hellip;</button>
+    </menu>
+  </form>
+</dialog>
+
 <dialog id="newMapDialog">
   <form method="dialog">
     <h3>New Heightmap</h3>

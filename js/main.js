@@ -814,13 +814,17 @@ async function loadLevelFile(f) {
     const h = parsed.map.height;
     const bytes = parsed.map.heightmap_bytes;
     if (bytes.length !== w * h) {
+      console.error(`[level-editor] Invalid heightmap_b64 in "${f.name}": expected ${w * h} bytes, got ${bytes.length}`);
       status(`Invalid heightmap_b64: expected ${w * h} bytes, got ${bytes.length}.`);
       return;
     }
+    console.log(`[level-editor] Loaded "${f.name}" via embedded heightmap_b64 (${w}x${h}, ${bytes.length} bytes).`);
     state.heightmap = new Heightmap(w, h);
     state.heightmap.data = new Uint8Array(bytes);
     state.heightmap.filePath = f.name || 'level.json';
   } else {
+    console.error(`[level-editor] "${f.name}" has no heightmap_b64 — falling back to sibling PNG lookup.`);
+
     // Fallback: look for a sibling PNG sharing the JSON's base name
     // (e.g. canyon_run.json → canyon_run.png), then the explicit map.image
     // if that existed, then any fallbacks under ./samples/.
@@ -839,31 +843,59 @@ async function loadLevelFile(f) {
     if (parsed.map.image) {
       candidates.push('./samples/racing/' + parsed.map.image.split('/').pop());
     }
+
+    console.groupCollapsed(`[level-editor] PNG fallback: trying ${candidates.length} path(s)`);
     let png = null, pngUrl = null;
+    const attempts = [];
     for (const u of candidates) {
-      try { const r = await fetch(u); if (r.ok) { png = await r.blob(); pngUrl = u; break; } }
-      catch { /* keep trying */ }
-    }
-    // No autoload found — ask the user explicitly whether to load a PNG.
-    if (!png) {
-      const wantPick = confirm(
-        `"${f.name}" has no embedded heightmap and no sibling PNG was found.\n\n` +
-        `Load a PNG for this level?`
-      );
-      if (!wantPick) {
-        status('Cancelled: level not loaded (no heightmap available).');
-        return;
+      try {
+        const r = await fetch(u);
+        if (r.ok) {
+          png = await r.blob();
+          pngUrl = u;
+          console.log(`✓ ${u}  →  ${png.size} bytes`);
+          break;
+        } else {
+          attempts.push({ url: u, status: r.status });
+          console.warn(`✗ ${u}  →  HTTP ${r.status}`);
+        }
+      } catch (err) {
+        attempts.push({ url: u, error: String(err) });
+        console.warn(`✗ ${u}  →  ${err}`);
       }
-      const picked = await pickFile('png');
+    }
+    console.groupEnd();
+
+    // No autoload found — ask via dialog for the PNG.
+    if (!png) {
+      console.error(
+        `[level-editor] All ${candidates.length} PNG fallback paths failed for "${f.name}". Prompting user.`,
+        attempts,
+      );
+      const picked = await askForFile({
+        title: 'Heightmap PNG required',
+        message: `"${f.name}" has no embedded heightmap and no sibling PNG was found. Choose a PNG for this level.`,
+        which: 'png',
+      });
       if (!picked) {
+        console.error(`[level-editor] User cancelled PNG picker — level not loaded.`);
         status('No PNG selected — level not loaded.');
         return;
       }
       png = picked;
       pngUrl = picked.name;
+      console.log(`[level-editor] User supplied PNG: ${picked.name} (${picked.size} bytes).`);
     }
-    state.heightmap = await Heightmap.fromPng(png);
+
+    try {
+      state.heightmap = await Heightmap.fromPng(png);
+    } catch (err) {
+      console.error(`[level-editor] Heightmap.fromPng failed for "${pngUrl}":`, err);
+      status(`Failed to decode PNG "${pngUrl}": ${err.message || err}`);
+      return;
+    }
     state.heightmap.filePath = (pngUrl || 'level.png').split('/').pop();
+    console.log(`[level-editor] Loaded "${f.name}" via fallback PNG "${pngUrl}" (${state.heightmap.width}x${state.heightmap.height}).`);
   }
   state.filePath = (f.name || 'level').replace(/\.json$/i, '');
   state.markers = parsed.markers;
@@ -892,24 +924,53 @@ async function loadHeightmapFile(f) {
     state.heightmap.filePath = f.name;
     state.filePath = f.name.replace(/\.png$/i, '');
 
+    console.log(`[level-editor] Loaded PNG "${f.name}" (${state.heightmap.width}x${state.heightmap.height}).`);
+
     // Try to auto-find a matching JSON sidecar by convention (e.g.
     // canyon_run.png → canyon_run.json in the game assets).
     const baseName = state.filePath;
-    let sidecarText = null;
+    let sidecarText = null, sidecarUrl = null;
     const candidates = [];
     const roots = uniqueRoots(state.gameRoot, './');
     for (const root of roots) candidates.push(root + `assets/racing_maps/${baseName}.json`);
     candidates.push(`./samples/racing/${baseName}.json`);
+
+    console.groupCollapsed(`[level-editor] JSON sidecar autoload: trying ${candidates.length} path(s)`);
     for (const u of candidates) {
-      try { const r = await fetch(u); if (r.ok) { sidecarText = await r.text(); break; } }
-      catch { /* keep trying */ }
+      try {
+        const r = await fetch(u);
+        if (r.ok) {
+          sidecarText = await r.text();
+          sidecarUrl = u;
+          console.log(`✓ ${u}`);
+          break;
+        } else {
+          console.warn(`✗ ${u}  →  HTTP ${r.status}`);
+        }
+      } catch (err) {
+        console.warn(`✗ ${u}  →  ${err}`);
+      }
     }
-    // If no sidecar was autoloaded, offer a picker for the user to supply one.
-    if (!sidecarText && confirm(`Loaded ${f.name}. Also load a matching JSON sidecar (track + markers)?`)) {
-      const pickedJson = await pickFile('json');
+    console.groupEnd();
+
+    // If no sidecar was autoloaded, offer a dialog so the user can pick one.
+    if (!sidecarText) {
+      console.warn(`[level-editor] No JSON sidecar autoloaded for "${f.name}" — asking user.`);
+      const pickedJson = await askForFile({
+        title: 'Optional: JSON sidecar?',
+        message: `Loaded ${f.name}. If you have a matching level JSON (track + markers), choose it now. Otherwise cancel to open the PNG alone.`,
+        which: 'json',
+      });
       if (pickedJson) {
-        try { sidecarText = await pickedJson.text(); }
-        catch { /* fall through — no sidecar */ }
+        sidecarUrl = pickedJson.name;
+        try {
+          sidecarText = await pickedJson.text();
+          console.log(`[level-editor] User supplied sidecar: ${pickedJson.name} (${pickedJson.size} bytes).`);
+        } catch (err) {
+          console.error(`[level-editor] Failed to read picked sidecar:`, err);
+        }
+      } else {
+        console.log(`[level-editor] User declined sidecar — opening PNG alone.`);
       }
     }
 
@@ -919,8 +980,9 @@ async function loadHeightmapFile(f) {
         state.markers = parsed.markers;
         state.track   = parsed.track;
         state.mapMeta = parsed.map;
+        console.log(`[level-editor] Parsed sidecar "${sidecarUrl}": ${state.track.checkpoints.length} checkpoints, ${state.markers.markers.length} markers.`);
       } catch (e) {
-        console.warn('Sidecar JSON parse failed:', e.message);
+        console.error(`[level-editor] Sidecar JSON parse FAILED for "${sidecarUrl}":`, e);
         state.markers = new MarkerSet();
         state.track   = new Track();
         state.mapMeta = null;
@@ -948,6 +1010,7 @@ async function loadHeightmapFile(f) {
       : ' (no JSON sidecar)';
     status(`Loaded ${f.name} (${state.heightmap.width}x${state.heightmap.height})${extra}.`);
   } catch (e) {
+    console.error(`[level-editor] loadHeightmapFile FAILED for "${f.name}":`, e);
     status('Failed to load PNG: ' + e.message);
   }
 }
@@ -1113,29 +1176,47 @@ $('genOk').onclick = e => {
 
 // ───── Snapshots (named state checkpoints in localStorage) ─────
 
-// Pop the browser's native file picker using a persistent hidden <input>.
-// Dynamically-created inputs sometimes get blocked by browsers when .click()
-// fires outside the user-gesture tick; using a persistent element is more
-// reliable. Returns the picked File, or null if cancelled/dismissed.
-function pickFile(which) {
+// Ask the user for a file via a <dialog>, then open the native file picker
+// from the dialog's button click (fresh user-gesture tick — this reliably
+// works even after prior `await`s). Returns the picked File, or null.
+function askForFile({ title, message, which }) {
   // which: 'png' | 'json'
-  const id = which === 'json' ? 'fileAskJson' : 'fileAskPng';
-  const inp = $(id);
+  const inputId = which === 'json' ? 'fileAskJson' : 'fileAskPng';
+  const inp = $(inputId);
+  const dlg = $('askFileDialog');
+  $('askFileTitle').textContent = title || 'Choose a file';
+  $('askFileMessage').textContent = message || '';
+
   return new Promise(resolve => {
     let settled = false;
-    const onChange = () => {
+    const settle = (file) => {
       if (settled) return;
       settled = true;
-      const f = inp.files && inp.files[0] ? inp.files[0] : null;
-      inp.removeEventListener('change', onChange);
-      inp.value = '';  // allow re-picking the same file later
-      resolve(f);
+      inp.removeEventListener('change', onInputChange);
+      dlg.removeEventListener('close', onDlgClose);
+      $('askFilePickBtn').removeEventListener('click', onPick);
+      inp.value = '';
+      if (dlg.open) dlg.close();
+      resolve(file);
     };
-    inp.addEventListener('change', onChange);
-    inp.click();
-    // Fallback: there's no reliable "cancelled" event. Resolve null after
-    // a generous idle timeout so the caller doesn't hang forever.
-    setTimeout(() => { if (!settled) { settled = true; inp.removeEventListener('change', onChange); resolve(null); } }, 90 * 1000);
+    const onInputChange = () => {
+      const f = inp.files && inp.files[0] ? inp.files[0] : null;
+      settle(f);
+    };
+    const onDlgClose = () => {
+      // If user dismissed the dialog without picking, resolve null.
+      // (If a file was picked, onInputChange already settled.)
+      settle(null);
+    };
+    const onPick = () => {
+      // Trigger the native picker from inside the button click — this is a
+      // fresh user gesture so the browser will honour .click() reliably.
+      inp.click();
+    };
+    inp.addEventListener('change', onInputChange);
+    dlg.addEventListener('close', onDlgClose);
+    $('askFilePickBtn').addEventListener('click', onPick);
+    dlg.showModal();
   });
 }
 

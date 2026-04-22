@@ -4,14 +4,18 @@
 import { History } from './history.js';
 
 export const GROUP_COLORS = [
-  ['A', [255, 80, 80]],
-  ['B', [80, 255, 80]],
-  ['C', [80, 120, 255]],
-  ['D', [255, 200, 50]],
-  ['E', [255, 100, 255]],
-  ['F', [80, 255, 255]],
-  ['G', [255, 160, 80]],
-  ['H', [180, 180, 180]],
+  ['A',     [255, 80, 80]],
+  ['B',     [80, 255, 80]],
+  ['C',     [80, 120, 255]],
+  ['D',     [255, 200, 50]],
+  ['E',     [255, 100, 255]],
+  ['F',     [80, 255, 255]],
+  ['G',     [255, 160, 80]],
+  ['H',     [180, 180, 180]],
+  // Reserved: marks the race start position. The game spawns a landing pad
+  // here and puts the player ship on it. Only the first START marker found
+  // in the level is used. Rendered in bright gold so it pops.
+  ['START', [255, 215, 0]],
 ];
 
 export function groupColor(group) {
