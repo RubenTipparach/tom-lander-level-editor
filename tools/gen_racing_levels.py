@@ -353,8 +353,8 @@ def build_level(spec: LevelSpec, out_dir: str):
 def specs() -> List[LevelSpec]:
     return [
         LevelSpec(
-            name='Island Racing',
-            file_basename='island_racing_level',
+            name='Resort Cruise',
+            file_basename='resort_cruise',
             width=128, height=128, seed=42,
             has_water=True, has_grass=True,
             base_terrain='island',

@@ -1,7 +1,7 @@
 {
   "Map": {
-    "name": "Island Racing",
-    "image": "assets/racing_maps/island_racing_level.png",
+    "name": "Resort Cruise",
+    "image": "assets/racing_maps/resort_cruise.png",
     "width": 128,
     "height": 128,
     "has_water": true,
@@ -13,7 +13,7 @@
     "terrain": null
   },
   "Track": {
-    "name": "Island Racing",
+    "name": "Resort Cruise",
     "laps": 3,
     "width": 8,
     "checkpoints": [
