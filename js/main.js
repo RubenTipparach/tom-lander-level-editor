@@ -902,6 +902,13 @@ async function loadLevelFile(f) {
   state.track   = parsed.track;
   state.mapMeta = parsed.map;
 
+  // Apply the tileset carried in the JSON (island/desert) so texture selection
+  // and threshold defaults match what the game will use.
+  if (parsed.tilesetIdx != null) {
+    await applyTileset(parsed.tilesetIdx);
+    if ($('tileset')) $('tileset').value = parsed.tilesetIdx;
+  }
+
   view2d.setHeightmap(state.heightmap, state.terrain);
   view2d.setMarkers(state.markers);
   view2d.setTrack(state.track);
@@ -980,6 +987,10 @@ async function loadHeightmapFile(f) {
         state.markers = parsed.markers;
         state.track   = parsed.track;
         state.mapMeta = parsed.map;
+        if (parsed.tilesetIdx != null) {
+          await applyTileset(parsed.tilesetIdx);
+          if ($('tileset')) $('tileset').value = parsed.tilesetIdx;
+        }
         console.log(`[level-editor] Parsed sidecar "${sidecarUrl}": ${state.track.checkpoints.length} checkpoints, ${state.markers.markers.length} markers.`);
       } catch (e) {
         console.error(`[level-editor] Sidecar JSON parse FAILED for "${sidecarUrl}":`, e);
@@ -1020,11 +1031,12 @@ function currentLevelJson() {
   // Capture latest UI values into mapMeta so the save round-trips them.
   pushAltitudeIntoMapMeta();
   return buildLevelJson({
-    heightmap: state.heightmap,
-    markers:   state.markers,
-    track:     state.track,
-    terrain:   state.terrain,
-    mapMeta:   {
+    heightmap:  state.heightmap,
+    markers:    state.markers,
+    track:      state.track,
+    terrain:    state.terrain,
+    tilesetIdx: state.tilesetIdx,
+    mapMeta:    {
       ...(state.mapMeta || {}),
       name:     state.mapMeta?.name || (state.track.name || state.filePath || 'Untitled'),
       basename: stripExt(state.filePath) || 'untitled',

@@ -39,20 +39,38 @@ function base64ToBytes(s) {
   return out;
 }
 
-export function buildLevelJson({ heightmap, markers, track, terrain, mapMeta }) {
+// Derive the JSON's Map.terrain field from the editor's live tileset + thresholds.
+// The game's heightmap loader treats a non-null `terrain` as "desert tileset" —
+// so we only write a terrain object when the desert tileset is selected, and
+// leave it null for the default island tileset. (Matches existing game logic.)
+function buildTerrainField(terrain, tilesetIdx) {
+  // tilesetIdx 0 = island (default), 1 = desert.
+  if (tilesetIdx !== 1) return null;
+  return {
+    tileset:          'desert',
+    ground_to_mid:    terrain?.lowToMid  ?? 8,
+    mid_to_high:      terrain?.midToHigh ?? 27,
+    ground_mid_blend: 2,
+    mid_high_blend:   2,
+  };
+}
+
+export function buildLevelJson({ heightmap, markers, track, terrain, mapMeta, tilesetIdx }) {
+  const terrainField = buildTerrainField(terrain, tilesetIdx);
   return JSON.stringify({
     Map: {
       name:           mapMeta?.name ?? 'Untitled',
       width:          heightmap.width,
       height:         heightmap.height,
       heightmap_b64:  bytesToBase64(heightmap.data),
+      tileset:        (tilesetIdx === 1) ? 'desert' : 'island',
       has_water:      mapMeta?.has_water ?? !!terrain?.hasWater,
       has_grass:      mapMeta?.has_grass ?? true,
       spawn_aseprite: mapMeta?.spawn_aseprite ?? [
         track?.checkpoints?.[0]?.X ?? Math.floor(heightmap.width / 2),
         track?.checkpoints?.[0]?.Z ?? Math.floor(heightmap.height / 2),
       ],
-      terrain:        mapMeta?.terrain ?? null,
+      terrain:        terrainField,
       edge_walls:     mapMeta?.edge_walls ?? null,
       landing_pads:   mapMeta?.landing_pads ?? null,
       altitude_limit: mapMeta?.altitude_limit ?? null,
@@ -109,6 +127,14 @@ export function parseLevelJson(text) {
     catch (e) { /* malformed — caller falls back to image path */ }
   }
 
+  // Resolve tilesetIdx from the JSON:
+  //   - Explicit Map.tileset = "desert" / "island" wins (new maps).
+  //   - Otherwise infer from presence of Map.terrain (legacy maps).
+  let tilesetIdx = 0;  // island
+  if (m.tileset === 'desert' || (m.terrain && (m.terrain.tileset === 'desert' || m.terrain.ground_to_mid !== undefined))) {
+    tilesetIdx = 1;
+  }
+
   return {
     map: {
       name:                  m.name ?? 'Untitled',
@@ -116,6 +142,7 @@ export function parseLevelJson(text) {
       width:                 m.width ?? 128,
       height:                m.height ?? 128,
       heightmap_bytes:       heightmapBytes,  // Uint8Array or null
+      tileset:               m.tileset ?? (tilesetIdx === 1 ? 'desert' : 'island'),
       has_water:             m.has_water !== false,
       has_grass:             m.has_grass !== false,
       spawn_aseprite:        m.spawn_aseprite ?? [64, 64],
@@ -126,6 +153,7 @@ export function parseLevelJson(text) {
       altitude_warning_time: m.altitude_warning_time ?? null,
       clamp_edges:           m.clamp_edges ?? null,
     },
+    tilesetIdx,   // 0 = island, 1 = desert (editor convention)
     track,
     markers,
   };
