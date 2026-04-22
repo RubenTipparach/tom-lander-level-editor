@@ -844,12 +844,19 @@ async function loadLevelFile(f) {
       try { const r = await fetch(u); if (r.ok) { png = await r.blob(); pngUrl = u; break; } }
       catch { /* keep trying */ }
     }
-    // No autoload found — ask the user to pick the PNG.
+    // No autoload found — ask the user explicitly whether to load a PNG.
     if (!png) {
-      status(`No heightmap bytes in JSON and no sibling PNG found — pick a PNG.`);
-      const picked = await pickFile('.png,image/png');
-      if (!picked) {
+      const wantPick = confirm(
+        `"${f.name}" has no embedded heightmap and no sibling PNG was found.\n\n` +
+        `Load a PNG for this level?`
+      );
+      if (!wantPick) {
         status('Cancelled: level not loaded (no heightmap available).');
+        return;
+      }
+      const picked = await pickFile('png');
+      if (!picked) {
+        status('No PNG selected — level not loaded.');
         return;
       }
       png = picked;
@@ -899,7 +906,7 @@ async function loadHeightmapFile(f) {
     }
     // If no sidecar was autoloaded, offer a picker for the user to supply one.
     if (!sidecarText && confirm(`Loaded ${f.name}. Also load a matching JSON sidecar (track + markers)?`)) {
-      const pickedJson = await pickFile('.json,application/json');
+      const pickedJson = await pickFile('json');
       if (pickedJson) {
         try { sidecarText = await pickedJson.text(); }
         catch { /* fall through — no sidecar */ }
@@ -1106,27 +1113,29 @@ $('genOk').onclick = e => {
 
 // ───── Snapshots (named state checkpoints in localStorage) ─────
 
-// Pop a native file picker for the given accept string (e.g. ".png").
-// Returns the picked File, or null if the user cancelled.
-function pickFile(accept) {
+// Pop the browser's native file picker using a persistent hidden <input>.
+// Dynamically-created inputs sometimes get blocked by browsers when .click()
+// fires outside the user-gesture tick; using a persistent element is more
+// reliable. Returns the picked File, or null if cancelled/dismissed.
+function pickFile(which) {
+  // which: 'png' | 'json'
+  const id = which === 'json' ? 'fileAskJson' : 'fileAskPng';
+  const inp = $(id);
   return new Promise(resolve => {
-    const inp = document.createElement('input');
-    inp.type = 'file';
-    inp.accept = accept;
-    inp.style.display = 'none';
-    document.body.appendChild(inp);
     let settled = false;
-    inp.onchange = () => {
+    const onChange = () => {
+      if (settled) return;
       settled = true;
-      resolve(inp.files && inp.files[0] ? inp.files[0] : null);
-      document.body.removeChild(inp);
+      const f = inp.files && inp.files[0] ? inp.files[0] : null;
+      inp.removeEventListener('change', onChange);
+      inp.value = '';  // allow re-picking the same file later
+      resolve(f);
     };
-    // Fire-and-forget fallback: if the picker is dismissed without choosing,
-    // there's no reliable event. Clean up after a generous delay.
+    inp.addEventListener('change', onChange);
     inp.click();
-    setTimeout(() => {
-      if (!settled) { resolve(null); try { document.body.removeChild(inp); } catch {} }
-    }, 60 * 1000);
+    // Fallback: there's no reliable "cancelled" event. Resolve null after
+    // a generous idle timeout so the caller doesn't hang forever.
+    setTimeout(() => { if (!settled) { settled = true; inp.removeEventListener('change', onChange); resolve(null); } }, 90 * 1000);
   });
 }
 
