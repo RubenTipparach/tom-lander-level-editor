@@ -218,6 +218,7 @@ function menuAction(act) {
     case 'save-level': saveLevel(); break;
     case 'save-level-as': saveLevelAs(); break;
     case 'save-png': downloadPng(); break;
+    case 'save-json': downloadJson(); break;
     case 'set-game-root': showGameRootDialog(); break;
     case 'undo': performUndo(); break;
     case 'redo': performRedo(); break;
@@ -267,6 +268,97 @@ $('toggleTextured').onclick = () => {
   view3d.setTextured(on);
 };
 $('reset3D').onclick = () => view3d.resetCamera();
+
+// ───── Soft brush + falloff editor ─────
+// Falloff is a small array of strengths in [0..1], indexed by normalized
+// distance from the brush center (0 = center, length-1 = rim). The user
+// edits it as a tiny pixel graph in the toolbar — drawing a column sets
+// that distance bucket's strength to (1 - row / height).
+
+const FALLOFF_LEN = 64;       // backing-pixel width of the editor canvas
+const FALLOFF_HEIGHT = 20;    // backing-pixel height of the editor canvas
+const falloffArr = new Float32Array(FALLOFF_LEN);
+function defaultFalloff() {
+  for (let i = 0; i < FALLOFF_LEN; i++) falloffArr[i] = 1 - (i / (FALLOFF_LEN - 1));
+}
+defaultFalloff();
+
+function falloffStrengthAt(norm) {
+  const i = Math.max(0, Math.min(FALLOFF_LEN - 1, Math.round(norm * (FALLOFF_LEN - 1))));
+  return falloffArr[i];
+}
+
+const falloffCanvas = $('falloffEditor');
+const falloffCtx = falloffCanvas.getContext('2d');
+falloffCtx.imageSmoothingEnabled = false;
+
+function drawFalloffEditor() {
+  const w = falloffCanvas.width, h = falloffCanvas.height;
+  // background
+  falloffCtx.fillStyle = '#181820';
+  falloffCtx.fillRect(0, 0, w, h);
+  // bars
+  for (let x = 0; x < FALLOFF_LEN; x++) {
+    const s = falloffArr[x];
+    const barH = Math.round(s * h);
+    falloffCtx.fillStyle = state.softBrush ? '#5fa3e0' : '#5a5a64';
+    falloffCtx.fillRect(x, h - barH, 1, barH);
+  }
+  // mid line
+  falloffCtx.fillStyle = 'rgba(255,255,255,0.06)';
+  falloffCtx.fillRect(0, Math.floor(h / 2), w, 1);
+}
+drawFalloffEditor();
+
+function falloffPosFromEvent(e) {
+  const rect = falloffCanvas.getBoundingClientRect();
+  const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
+  const x = Math.max(0, Math.min(FALLOFF_LEN - 1,
+    Math.floor(cx / rect.width * FALLOFF_LEN)));
+  const yPx = Math.max(0, Math.min(FALLOFF_HEIGHT - 1,
+    Math.floor(cy / rect.height * FALLOFF_HEIGHT)));
+  // y=0 (top) → strength 1; y=H-1 (bottom) → strength 0.
+  const s = 1 - (yPx + 0.5) / FALLOFF_HEIGHT;
+  return [x, Math.max(0, Math.min(1, s))];
+}
+
+let falloffPainting = false;
+let falloffLast = null;
+falloffCanvas.addEventListener('mousedown', e => {
+  if (e.button === 2) { defaultFalloff(); drawFalloffEditor(); return; }
+  if (e.button !== 0) return;
+  falloffPainting = true;
+  falloffLast = falloffPosFromEvent(e);
+  falloffArr[falloffLast[0]] = falloffLast[1];
+  drawFalloffEditor();
+});
+falloffCanvas.addEventListener('mousemove', e => {
+  if (!falloffPainting) return;
+  const cur = falloffPosFromEvent(e);
+  // Linear-fill columns between last and current so quick drags don't gap.
+  const [x0, s0] = falloffLast, [x1, s1] = cur;
+  const lo = Math.min(x0, x1), hi = Math.max(x0, x1);
+  for (let x = lo; x <= hi; x++) {
+    const t = (lo === hi) ? 1 : (x - x0) / (x1 - x0 || 1);
+    falloffArr[x] = s0 + (s1 - s0) * Math.max(0, Math.min(1, t));
+  }
+  falloffLast = cur;
+  drawFalloffEditor();
+});
+window.addEventListener('mouseup', () => { falloffPainting = false; });
+falloffCanvas.addEventListener('contextmenu', e => e.preventDefault());
+
+$('falloffReset').onclick = () => { defaultFalloff(); drawFalloffEditor(); };
+
+$('softBrush').onchange = () => {
+  state.softBrush = $('softBrush').checked;
+  view2d.softBrush = state.softBrush;
+  view2d.falloffFn = falloffStrengthAt;
+  drawFalloffEditor();
+};
+// Always hand the function over so toggling the checkbox at any time works.
+view2d.falloffFn = falloffStrengthAt;
+state.softBrush = false;
 
 // ───── Palette swatches ─────
 
@@ -331,6 +423,46 @@ $('nightMode').onchange = () => {
   status(state.markers.nightMode ? 'Night mode enabled. Save to persist.'
                                  : 'Night mode disabled. Save to persist.');
 };
+
+// ───── Altitude limit ─────
+// Defaults match Mission 7 (Trench Run): 30 world units, 10s warning.
+// When the box is unchecked, the JSON's altitude_limit is null and the game
+// applies no ceiling (same behaviour as Act 1 island maps today).
+
+const DEFAULT_ALTITUDE_LIMIT = 30;
+const DEFAULT_ALTITUDE_WARN  = 10;
+
+function pushAltitudeIntoMapMeta() {
+  if (!state.mapMeta) state.mapMeta = {};
+  if ($('altitudeOn').checked) {
+    state.mapMeta.altitude_limit         = clamp(parseInt($('altitudeLimit').value) || DEFAULT_ALTITUDE_LIMIT, 1, 200);
+    state.mapMeta.altitude_warning_time  = clamp(parseInt($('altitudeWarn').value)  || DEFAULT_ALTITUDE_WARN, 1, 60);
+  } else {
+    state.mapMeta.altitude_limit        = null;
+    state.mapMeta.altitude_warning_time = null;
+  }
+}
+function syncAltitudeUiFromMapMeta() {
+  const lim  = state.mapMeta?.altitude_limit;
+  const warn = state.mapMeta?.altitude_warning_time;
+  $('altitudeOn').checked    = lim != null;
+  $('altitudeLimit').value   = lim  ?? DEFAULT_ALTITUDE_LIMIT;
+  $('altitudeWarn').value    = warn ?? DEFAULT_ALTITUDE_WARN;
+  $('altitudeLimit').disabled = !$('altitudeOn').checked;
+  $('altitudeWarn').disabled  = !$('altitudeOn').checked;
+}
+$('altitudeOn').onchange = () => {
+  $('altitudeLimit').disabled = !$('altitudeOn').checked;
+  $('altitudeWarn').disabled  = !$('altitudeOn').checked;
+  pushAltitudeIntoMapMeta();
+  markDirty();
+  status($('altitudeOn').checked
+    ? `Altitude limit ${$('altitudeLimit').value} (warn ${$('altitudeWarn').value}s). Save to persist.`
+    : 'Altitude limit removed. Save to persist.');
+};
+$('altitudeLimit').oninput = () => { pushAltitudeIntoMapMeta(); markDirty(); };
+$('altitudeWarn').oninput  = () => { pushAltitudeIntoMapMeta(); markDirty(); };
+syncAltitudeUiFromMapMeta();
 
 async function applyTileset(idx) {
   state.tilesetIdx = idx;
@@ -428,7 +560,50 @@ function refreshTrackUI() {
   state.track.checkpoints.forEach((cp, i) => {
     const li = document.createElement('li');
     li.textContent = `${i + 1}. ${cp.Name} (${cp.X},${cp.Z}) h=${cp.HeightAboveGround} t=${cp.TimeLimit}s`;
+    li.draggable = true;
+    li.dataset.idx = i;
     li.onclick = () => selectCp(i);
+
+    li.addEventListener('dragstart', e => {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', String(i));
+      li.classList.add('drag');
+    });
+    li.addEventListener('dragend', () => {
+      li.classList.remove('drag');
+      cpListEl.querySelectorAll('li').forEach(el => el.classList.remove('drop-above', 'drop-below'));
+    });
+    li.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const r = li.getBoundingClientRect();
+      const above = (e.clientY - r.top) < r.height / 2;
+      li.classList.toggle('drop-above', above);
+      li.classList.toggle('drop-below', !above);
+    });
+    li.addEventListener('dragleave', () => {
+      li.classList.remove('drop-above', 'drop-below');
+    });
+    li.addEventListener('drop', e => {
+      e.preventDefault();
+      const from = parseInt(e.dataTransfer.getData('text/plain'));
+      if (Number.isNaN(from)) return;
+      const r = li.getBoundingClientRect();
+      const above = (e.clientY - r.top) < r.height / 2;
+      let to = i + (above ? 0 : 1);
+      // Splicing: account for removing the source first.
+      if (from < to) to -= 1;
+      if (from === to) return;
+      const arr = state.track.checkpoints;
+      const [moved] = arr.splice(from, 1);
+      arr.splice(to, 0, moved);
+      _selectedCp = to;
+      refreshTrackUI();
+      selectCp(to);
+      view3d.setTrack(state.track);
+      markDirty();
+    });
+
     cpListEl.appendChild(li);
   });
   view2d.draw();
@@ -634,6 +809,7 @@ async function loadLevelFile(f) {
   view3d.setTrack(state.track);
   $('dualContour').checked = !!state.markers.dualContour;
   $('nightMode').checked = !!state.markers.nightMode;
+  syncAltitudeUiFromMapMeta();
   refreshMarkerUI();
   refreshTrackUI();
   clearDirty();
@@ -659,6 +835,7 @@ async function loadHeightmapFile(f) {
     refreshTrackUI();
     $('dualContour').checked = false;
     $('nightMode').checked = false;
+    syncAltitudeUiFromMapMeta();
     clearDirty();
     status(`Loaded PNG ${f.name} (${state.heightmap.width}x${state.heightmap.height}). Use File > Save Level to export a unified JSON.`);
   } catch (e) {
@@ -668,6 +845,8 @@ async function loadHeightmapFile(f) {
 
 // ── Save Level (unified JSON + PNG) ──────────────────────────────────────
 function currentLevelJson() {
+  // Capture latest UI values into mapMeta so the save round-trips them.
+  pushAltitudeIntoMapMeta();
   return buildLevelJson({
     heightmap: state.heightmap,
     markers:   state.markers,
@@ -676,8 +855,8 @@ function currentLevelJson() {
     mapMeta:   {
       ...(state.mapMeta || {}),
       name:     state.mapMeta?.name || (state.track.name || state.filePath || 'Untitled'),
-      basename: state.filePath || 'untitled',
-      image:    state.mapMeta?.image || `assets/racing_maps/${state.filePath || 'untitled'}.png`,
+      basename: stripExt(state.filePath) || 'untitled',
+      image:    state.mapMeta?.image || `assets/racing_maps/${stripExt(state.filePath) || 'untitled'}.png`,
     },
   });
 }
@@ -697,7 +876,7 @@ async function saveLevel() {
 }
 async function saveLevelAs() {
   if (!state.heightmap) return;
-  const base = state.filePath || 'untitled';
+  const base = stripExt(state.filePath) || 'untitled';
   const json = new Blob([currentLevelJson()], { type: 'application/json' });
   const jh = await saveBlob(json, base + '.json',
     [{ description: 'Racing Level JSON', accept: { 'application/json': ['.json'] } }]);
@@ -714,7 +893,12 @@ async function saveLevelAs() {
 async function downloadPng() {
   if (!state.heightmap) return;
   const b = await state.heightmap.toPngBlob();
-  downloadBlob(b, (state.filePath || 'heightmap') + '.png');
+  downloadBlob(b, (stripExt(state.filePath) || 'heightmap') + '.png');
+}
+function downloadJson() {
+  if (!state.heightmap) { status('Load or generate a heightmap first.'); return; }
+  const b = new Blob([currentLevelJson()], { type: 'application/json' });
+  downloadBlob(b, (stripExt(state.filePath) || 'level') + '.json');
 }
 
 async function loadMapPreset(idx) {
@@ -758,6 +942,7 @@ async function loadMapPreset(idx) {
     view3d.setMarkers(state.markers);
     $('dualContour').checked = state.markers.dualContour;
     $('nightMode').checked = !!state.markers.nightMode;
+    syncAltitudeUiFromMapMeta();
     refreshMarkerUI();
     clearDirty();
     status(`Loaded preset map: ${m.displayName} (${state.heightmap.width}x${state.heightmap.height}).`);
@@ -779,7 +964,7 @@ $('newMapOk').onclick = e => {
   const d = clamp(parseInt($('newMapDefault').value), 0, 31);
   state.heightmap = new Heightmap(w, h, d);
   state.heightmap.filePath = 'untitled.png';
-  state.filePath = 'untitled.png';
+  state.filePath = 'untitled';
   state.markers = new MarkerSet();
   view2d.setHeightmap(state.heightmap, state.terrain);
   view2d.setMarkers(state.markers);
@@ -829,14 +1014,19 @@ function quickSnapshot() {
   status(`Snapshot "${name}" saved (browser localStorage).`);
 }
 function snapshotPayload() {
+  pushAltitudeIntoMapMeta();
   return {
     width: state.heightmap.width,
     height: state.heightmap.height,
     data: arrayBufferToBase64(state.heightmap.data.buffer),
     markers: state.markers.toJsonString(),
-    track: state.track.toFileString(),
+    track: JSON.stringify({
+      name: state.track.name, laps: state.track.laps,
+      width: state.track.width, checkpoints: state.track.checkpoints,
+    }),
     tilesetIdx: state.tilesetIdx,
     terrainEdits: { lowToMid: state.terrain.lowToMid, midToHigh: state.terrain.midToHigh },
+    mapMeta: state.mapMeta || null,
   };
 }
 function restoreSnapshot(payload) {
@@ -844,7 +1034,15 @@ function restoreSnapshot(payload) {
   state.heightmap = new Heightmap(payload.width, payload.height);
   state.heightmap.data = new Uint8Array(buf);
   state.markers = MarkerSet.fromJsonString(payload.markers);
-  state.track = Track.fromFileString(payload.track);
+  // track was historically a .track-text string; now it's a JSON object.
+  state.track = new Track();
+  try {
+    const t = JSON.parse(payload.track);
+    state.track.name = t.name ?? 'Untitled';
+    state.track.laps = t.laps ?? 3;
+    state.track.width = t.width ?? 6;
+    state.track.checkpoints = t.checkpoints ?? [];
+  } catch { /* leave defaults */ }
   state.tilesetIdx = payload.tilesetIdx ?? 0;
   tilesetSel.value = state.tilesetIdx;
   state.terrain = makeTerrainFromTileset(state.tilesetIdx);
@@ -852,6 +1050,7 @@ function restoreSnapshot(payload) {
     state.terrain.lowToMid = payload.terrainEdits.lowToMid;
     state.terrain.midToHigh = payload.terrainEdits.midToHigh;
   }
+  state.mapMeta = payload.mapMeta || null;
   $('lowMid').value = state.terrain.lowToMid;
   $('midHigh').value = state.terrain.midToHigh;
   updateTextureLabels();
@@ -866,6 +1065,7 @@ function restoreSnapshot(payload) {
   refreshTrackUI();
   $('dualContour').checked = state.markers.dualContour;
   $('nightMode').checked = !!state.markers.nightMode;
+  syncAltitudeUiFromMapMeta();
   clearDirty();
 }
 
@@ -1078,6 +1278,7 @@ async function loadFromLibrary(name) {
   view3d.setTrack(state.track);
   $('dualContour').checked = !!state.markers.dualContour;
   $('nightMode').checked = !!state.markers.nightMode;
+  syncAltitudeUiFromMapMeta();
   refreshMarkerUI();
   refreshTrackUI();
   status(`Loaded "${name}" from library (${e.type}).`);
@@ -1159,6 +1360,7 @@ function updateTitle() {
   document.title = `Tom Lander Web Terrain Editor - ${name}${dirty ? ' *' : ''}`;
 }
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function stripExt(s) { return (s || '').replace(/\.(png|json)$/i, ''); }
 
 // Browser close / reload guard
 window.addEventListener('beforeunload', (e) => {
@@ -1169,9 +1371,9 @@ window.addEventListener('beforeunload', (e) => {
 });
 
 function autoDetectGameRoot() {
-  // When served at /utilities/WebTerrainEditor/ inside the game repo, the
+  // When served at /utilities/level-editor/ inside the game repo, the
   // game's assets are two levels up. When served standalone, they're alongside.
-  return location.pathname.includes('/utilities/WebTerrainEditor/') ? '../../' : './';
+  return location.pathname.includes('/utilities/level-editor/') ? '../../' : './';
 }
 function uniqueRoots(...roots) {
   const norm = r => (r.endsWith('/') ? r : r + '/');
@@ -1180,7 +1382,9 @@ function uniqueRoots(...roots) {
   return out;
 }
 
-// initial state
+// initial state — start with the textured 3D view on (matches game shader).
+view2d.setViewMode('textured');
+view3d.setTextured(true);
 updateTextureLabels();
 loadTerrainTextures().catch(()=>{});
 status(HAS_FS

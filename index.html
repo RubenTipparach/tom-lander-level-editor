@@ -17,6 +17,7 @@
       <button data-act="save-level">Save Level (JSON + PNG)</button>
       <button data-act="save-level-as">Save Level As&hellip;</button>
       <button data-act="save-png">Download PNG only</button>
+      <button data-act="save-json">Download JSON only</button>
       <hr>
       <button data-act="lib-save">Save to Library</button>
       <button data-act="lib-manage">Manage Library&hellip;</button>
@@ -79,8 +80,15 @@
   <button data-tool="markers-move" class="tool">Move</button>
 
   <span class="sep"></span>
+  <label class="chk" title="When on, brush strength fades from center to edge using the falloff graph below.">
+    <input id="softBrush" type="checkbox"> Soft brush
+  </label>
+  <canvas id="falloffEditor" width="64" height="20" title="Falloff graph. Left edge = brush center, right edge = brush rim. Click/drag to set strength. Right-click to reset to linear."></canvas>
+  <button id="falloffReset" title="Reset falloff to linear ramp">↺</button>
+
+  <span class="sep"></span>
   <button id="toggleZones" class="toggle">Flat Zones</button>
-  <button id="toggleTextured" class="toggle">3D Textured</button>
+  <button id="toggleTextured" class="toggle active">3D Textured</button>
 
   <span class="sep"></span>
   <button id="reset3D">Reset 3D</button>
@@ -150,6 +158,13 @@
     <input id="midHigh" type="number" min="2" max="31" value="10">
     <label class="chk"><input id="dualContour" type="checkbox"> Dual Contour</label>
     <label class="chk"><input id="nightMode" type="checkbox"> Night Mode</label>
+    <label class="chk" title="When enabled, the game kills the ship after staying above the altitude limit for the warning time. Same rule as Mission 7 (Trench Run).">
+      <input id="altitudeOn" type="checkbox"> Altitude Limit
+    </label>
+    <span class="lbl">Limit</span>
+    <input id="altitudeLimit" type="number" min="1" max="200" value="30" title="Max altitude in world units (game shows × 10 m).">
+    <span class="lbl">Warn(s)</span>
+    <input id="altitudeWarn" type="number" min="1" max="60" value="10" title="Seconds above the limit before the ship dies.">
     <span class="spacer"></span>
     <span id="cursorInfo"></span>
   </div>

@@ -21,6 +21,11 @@ export class Terrain2D {
     this.tool = 'paint';
     this.brushHeight = 1;
     this.brushRadius = 0;
+    // Soft-brush state. softBrush=false means hard brush (every pixel in
+    // radius gets full effect). When true, falloffFn(normDist) gives the
+    // per-pixel strength weight in [0..1].
+    this.softBrush = false;
+    this.falloffFn = null;
 
     // view transform
     this.zoom = 4;
@@ -314,9 +319,10 @@ export class Terrain2D {
     if (tx === this.lastTile[0] && ty === this.lastTile[1]) return;
     this.lastTile = [tx, ty];
 
-    if (this.tool === 'smooth') this.heightmap.smoothBrush(tx, ty, this.brushRadius);
-    else if (this.tool === 'erase') this.heightmap.paintBrush(tx, ty, this.brushRadius, 0);
-    else this.heightmap.paintBrush(tx, ty, this.brushRadius, this.brushHeight);
+    const fn = this.softBrush ? this.falloffFn : null;
+    if (this.tool === 'smooth') this.heightmap.smoothBrush(tx, ty, this.brushRadius, fn);
+    else if (this.tool === 'erase') this.heightmap.paintBrush(tx, ty, this.brushRadius, 0, fn);
+    else this.heightmap.paintBrush(tx, ty, this.brushRadius, this.brushHeight, fn);
 
     this.invalidateBuffer();
     this.draw();

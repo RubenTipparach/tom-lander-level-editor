@@ -75,12 +75,30 @@ export class Heightmap {
     return out;
   }
 
-  paintBrush(cx, cy, radius, h) {
+  // strengthAt(normDist) → 0..1 weight at a given normalized distance from
+  // the brush center (0 = center, 1 = rim). When omitted, the brush is hard
+  // (every pixel in the radius gets full effect).
+  paintBrush(cx, cy, radius, h, strengthAt) {
     const pix = Heightmap.circlePixels(cx, cy, radius);
-    for (const [x, y] of pix) this.set(x, y, h);
+    if (!strengthAt || radius <= 0) {
+      for (const [x, y] of pix) this.set(x, y, h);
+      return;
+    }
+    for (const [x, y] of pix) {
+      if (x < 0 || x >= this.width || y < 0 || y >= this.height) continue;
+      const dx = x - cx, dy = y - cy;
+      const norm = Math.min(1, Math.hypot(dx, dy) / radius);
+      const s = Math.max(0, Math.min(1, strengthAt(norm)));
+      if (s <= 0) continue;
+      const i = y * this.width + x;
+      const cur = this.data[i];
+      const blended = Math.round(cur + (h - cur) * s);
+      this.data[i] = Math.max(0, Math.min(31, blended));
+    }
+    this.dirty = true;
   }
 
-  smoothBrush(cx, cy, radius) {
+  smoothBrush(cx, cy, radius, strengthAt) {
     const pix = Heightmap.circlePixels(cx, cy, radius);
     let sum = 0, n = 0;
     for (const [x, y] of pix) {
@@ -89,12 +107,19 @@ export class Heightmap {
       }
     }
     if (!n) return;
-    const avg = Math.round(sum / n);
+    const avg = sum / n;
     for (const [x, y] of pix) {
-      if (x >= 0 && x < this.width && y >= 0 && y < this.height) {
-        const i = y * this.width + x;
-        this.data[i] = Math.max(0, Math.min(31, ((this.data[i] + avg) >> 1)));
+      if (x < 0 || x >= this.width || y < 0 || y >= this.height) continue;
+      const i = y * this.width + x;
+      let s = 0.5;
+      if (strengthAt && radius > 0) {
+        const dx = x - cx, dy = y - cy;
+        const norm = Math.min(1, Math.hypot(dx, dy) / radius);
+        s = Math.max(0, Math.min(1, strengthAt(norm)));
+        if (s <= 0) continue;
       }
+      const cur = this.data[i];
+      this.data[i] = Math.max(0, Math.min(31, Math.round(cur + (avg - cur) * s)));
     }
     this.dirty = true;
   }

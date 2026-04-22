@@ -6,7 +6,7 @@ REM Starts a static HTTP server and opens the editor in your default browser.
 REM
 REM Behaviour:
 REM   1. If the parent's parent has an "assets\textures" folder (i.e. this
-REM      bundle sits inside the game repo at utilities\WebTerrainEditor),
+REM      bundle sits inside the game repo at utilities\level-editor),
 REM      serve from the game root so the editor can fetch real game maps and
 REM      textures via "../../assets/...".
 REM   2. Otherwise, serve from this folder. The editor still works fully via
@@ -23,7 +23,7 @@ pushd "%EDITOR_DIR%\..\.." >nul 2>&1
 if errorlevel 1 goto SERVE_LOCAL
 if exist "assets\textures" (
   set "SERVE_DIR=%CD%"
-  set "REL_URL=utilities/WebTerrainEditor/index.html"
+  set "REL_URL=utilities/level-editor/index.html"
   popd
   goto FOUND_ROOT
 )
