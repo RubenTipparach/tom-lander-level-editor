@@ -781,22 +781,50 @@ async function loadLevelFile(f) {
   try { parsed = parseLevelJson(text); }
   catch (e) { status('Invalid JSON: ' + e.message); return; }
 
-  // Pull the heightmap PNG referenced by Map.image.
-  const candidates = uniqueRoots(state.gameRoot, './').map(r => r + parsed.map.image)
-    .concat(['./samples/racing/' + parsed.map.image.split('/').pop()]);
-  let png = null;
-  for (const u of candidates) {
-    try { const r = await fetch(u); if (r.ok) { png = await r.blob(); break; } }
-    catch { /* keep trying */ }
+  // Preferred path: heightmap bytes are embedded in the JSON.
+  if (parsed.map.heightmap_bytes) {
+    const w = parsed.map.width;
+    const h = parsed.map.height;
+    const bytes = parsed.map.heightmap_bytes;
+    if (bytes.length !== w * h) {
+      status(`Invalid heightmap_b64: expected ${w * h} bytes, got ${bytes.length}.`);
+      return;
+    }
+    state.heightmap = new Heightmap(w, h);
+    state.heightmap.data = new Uint8Array(bytes);
+    state.heightmap.filePath = f.name || 'level.json';
+  } else {
+    // Fallback: look for a sibling PNG sharing the JSON's base name
+    // (e.g. canyon_run.json → canyon_run.png), then the explicit map.image
+    // if that existed, then any fallbacks under ./samples/.
+    const baseName = (f.name || 'level').replace(/\.json$/i, '');
+    const fallbackPaths = [];
+    fallbackPaths.push(`assets/racing_maps/${baseName}.png`);
+    if (parsed.map.image && parsed.map.image !== `assets/racing_maps/${baseName}.png`) {
+      fallbackPaths.push(parsed.map.image);
+    }
+    const candidates = [];
+    const roots = uniqueRoots(state.gameRoot, './');
+    for (const root of roots) {
+      for (const p of fallbackPaths) candidates.push(root + p);
+    }
+    candidates.push('./samples/racing/' + baseName + '.png');
+    if (parsed.map.image) {
+      candidates.push('./samples/racing/' + parsed.map.image.split('/').pop());
+    }
+    let png = null, pngUrl = null;
+    for (const u of candidates) {
+      try { const r = await fetch(u); if (r.ok) { png = await r.blob(); pngUrl = u; break; } }
+      catch { /* keep trying */ }
+    }
+    if (!png) {
+      status(`Loaded JSON but no heightmap_b64 and no PNG found (tried ${baseName}.png and fallbacks). Use File > Open PNG only, or set Game Root URL.`);
+      return;
+    }
+    state.heightmap = await Heightmap.fromPng(png);
+    state.heightmap.filePath = pngUrl.split('/').pop();
   }
-  if (!png) {
-    status(`Loaded JSON but could not fetch ${parsed.map.image}. Use File > Open PNG only to load the heightmap, or Set Game Root URL.`);
-    return;
-  }
-
-  state.heightmap = await Heightmap.fromPng(png);
-  state.heightmap.filePath = parsed.map.image.split('/').pop();
-  state.filePath = (f.name || parsed.map.image.split('/').pop()).replace(/\.json$/i, '');
+  state.filePath = (f.name || 'level').replace(/\.json$/i, '');
   state.markers = parsed.markers;
   state.track   = parsed.track;
   state.mapMeta = parsed.map;

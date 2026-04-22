@@ -1,9 +1,12 @@
-// Unified racing-level descriptor: one JSON document containing the map
-// metadata, race track checkpoints, and entity markers — exactly the shape
-// the game's level_loader.lua consumes.
+// Unified racing-level descriptor: one self-contained JSON document containing
+// the map metadata, RAW heightmap bytes, race track checkpoints, and entity
+// markers. The heightmap is base64-encoded as palette indices (0..31, one byte
+// per tile) directly in Map.heightmap_b64. The JSON NEVER references an
+// external PNG — a self-contained file cannot drift out of sync with a sidecar
+// that a user might rename, delete, or mis-path.
 //
 //   {
-//     "Map":   { name, image, width, height, has_water, has_grass,
+//     "Map":   { name, width, height, heightmap_b64, has_water, has_grass,
 //                spawn_aseprite=[x,z], terrain={...}|null, edge_walls?,
 //                landing_pads?, altitude_limit?, altitude_warning_time?,
 //                clamp_edges? },
@@ -17,13 +20,32 @@ import { Heightmap } from './heightmap.js';
 import { MarkerSet } from './markers.js';
 import { Track } from './track.js';
 
+// Base64 helpers for Uint8Array (palette-index bytes, 0..31 each).
+function bytesToBase64(buf) {
+  // btoa expects a binary string; build it in chunks to avoid call-stack limits
+  // on large maps (e.g. 512x512 = 262144 bytes).
+  const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+  const CHUNK = 0x8000;
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(bin);
+}
+function base64ToBytes(s) {
+  const bin = atob(s);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
 export function buildLevelJson({ heightmap, markers, track, terrain, mapMeta }) {
   return JSON.stringify({
     Map: {
       name:           mapMeta?.name ?? 'Untitled',
-      image:          mapMeta?.image ?? `assets/racing_maps/${mapMeta?.basename ?? 'untitled'}.png`,
       width:          heightmap.width,
       height:         heightmap.height,
+      heightmap_b64:  bytesToBase64(heightmap.data),
       has_water:      mapMeta?.has_water ?? !!terrain?.hasWater,
       has_grass:      mapMeta?.has_grass ?? true,
       spawn_aseprite: mapMeta?.spawn_aseprite ?? [
@@ -36,6 +58,7 @@ export function buildLevelJson({ heightmap, markers, track, terrain, mapMeta }) 
       altitude_limit: mapMeta?.altitude_limit ?? null,
       altitude_warning_time: mapMeta?.altitude_warning_time ?? null,
       clamp_edges:    mapMeta?.clamp_edges ?? null,
+      image:          mapMeta?.image ?? null,  // optional legacy sidecar path
     },
     Track: {
       name:        track?.name ?? mapMeta?.name ?? 'Untitled Track',
@@ -80,12 +103,20 @@ export function parseLevelJson(text) {
     Name: cp.name ?? '',
   }));
 
+  // Decode embedded heightmap bytes if present (authoritative).
+  let heightmapBytes = null;
+  if (typeof m.heightmap_b64 === 'string' && m.heightmap_b64.length > 0) {
+    try { heightmapBytes = base64ToBytes(m.heightmap_b64); }
+    catch (e) { /* malformed — caller falls back to image path */ }
+  }
+
   return {
     map: {
       name:                  m.name ?? 'Untitled',
       image:                 m.image ?? '',
       width:                 m.width ?? 128,
       height:                m.height ?? 128,
+      heightmap_bytes:       heightmapBytes,  // Uint8Array or null
       has_water:             m.has_water !== false,
       has_grass:             m.has_grass !== false,
       spawn_aseprite:        m.spawn_aseprite ?? [64, 64],
