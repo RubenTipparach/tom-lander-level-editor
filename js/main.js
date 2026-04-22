@@ -2,7 +2,7 @@
 
 import { PALETTE, isDarkSwatch, colorToCss } from './palette.js';
 import { Heightmap, loadImage } from './heightmap.js';
-import { MarkerSet, GROUP_COLORS } from './markers.js';
+import { MarkerSet, GROUP_COLORS, makeMarker } from './markers.js';
 import { Track } from './track.js';
 import { Terrain2D } from './terrain2d.js';
 import { Terrain3D } from './terrain3d.js';
@@ -1130,6 +1130,25 @@ async function openNewDialog() {
   if (await confirmDiscardOrSave() === 'cancel') return;
   newDlg.showModal();
 }
+// Ensure the level has a START marker. Does nothing if one already exists.
+// Defaults to the center of the heightmap. Returns true if it added one.
+function ensureStartMarker() {
+  if (!state.heightmap || !state.markers) return false;
+  for (const m of state.markers.markers) {
+    const grp = String(m.Group || '').toUpperCase();
+    const nam = String(m.Name || '').toLowerCase();
+    if (grp === 'START' || nam === 'start_node') return false;  // already present
+  }
+  const cx = Math.floor(state.heightmap.width  / 2);
+  const cz = Math.floor(state.heightmap.height / 2);
+  state.markers.markers.push(makeMarker(cx, cz, {
+    group: 'START',
+    name:  'Start',
+    height: 0,
+  }));
+  return true;
+}
+
 $('newMapOk').onclick = e => {
   const w = clamp(parseInt($('newMapW').value), 16, 512);
   const h = clamp(parseInt($('newMapH').value), 16, 512);
@@ -1138,6 +1157,7 @@ $('newMapOk').onclick = e => {
   state.heightmap.filePath = 'untitled.png';
   state.filePath = 'untitled';
   state.markers = new MarkerSet();
+  ensureStartMarker();  // default: every new map gets a START marker at center
   view2d.setHeightmap(state.heightmap, state.terrain);
   view2d.setMarkers(state.markers);
   view3d.setHeightmap(state.heightmap, state.terrain);
@@ -1168,8 +1188,12 @@ $('genOk').onclick = e => {
   if (state.heightmap) state.heightmap.pushUndo();
   state.heightmap = generate(_genKind, opts);
   state.heightmap.filePath = state.filePath || 'generated.png';
+  // Every freshly-generated level gets a default START marker if none exists.
+  if (ensureStartMarker()) view2d.setMarkers(state.markers);
   view2d.setHeightmap(state.heightmap, state.terrain);
   view3d.setHeightmap(state.heightmap, state.terrain);
+  view3d.setMarkers(state.markers);
+  refreshMarkerUI();
   markDirty();  // generated content not saved anywhere yet
   status(`Generated ${_genKind} (${opts.width}x${opts.height}, seed=${opts.seed}).`);
 };
