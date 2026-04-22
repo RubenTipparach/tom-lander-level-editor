@@ -18,6 +18,9 @@
       <button data-act="save-level-as">Save Level As&hellip;</button>
       <button data-act="save-png">Download PNG only</button>
       <hr>
+      <button data-act="lib-save">Save to Library</button>
+      <button data-act="lib-manage">Manage Library&hellip;</button>
+      <hr>
       <button data-act="set-game-root">Set Game Root URL&hellip;</button>
     </div>
   </div>
@@ -216,6 +219,43 @@
     <button id="snapSaveBtn" type="button">Save Snapshot</button>
     <ul id="snapList"></ul>
     <menu><button value="ok">Close</button></menu>
+  </form>
+</dialog>
+
+<dialog id="libraryDialog" class="wide">
+  <form method="dialog">
+    <h3>Local Library</h3>
+    <p class="hint">Levels saved here live in browser localStorage. They survive
+    page reloads but never touch disk until you click <em>Export</em>. Use the
+    type selector to keep racing maps separate from campaign maps.</p>
+
+    <fieldset>
+      <legend>Save current level</legend>
+      <div class="row">
+        <label style="flex:1">Name <input id="libSaveName" type="text" placeholder="my_level"></label>
+        <label>Type
+          <select id="libSaveType">
+            <option value="racing">Racing</option>
+            <option value="campaign">Campaign</option>
+          </select>
+        </label>
+        <button id="libSaveBtn" type="button">Save</button>
+      </div>
+    </fieldset>
+
+    <div class="lib-section">
+      <h4>Racing maps <span id="libCountRacing" class="dim"></span></h4>
+      <ul id="libListRacing" class="lib-list"></ul>
+    </div>
+    <div class="lib-section">
+      <h4>Campaign maps <span id="libCountCampaign" class="dim"></span></h4>
+      <ul id="libListCampaign" class="lib-list"></ul>
+    </div>
+
+    <p class="hint" id="libSize"></p>
+    <menu>
+      <button value="ok">Close</button>
+    </menu>
   </form>
 </dialog>
 

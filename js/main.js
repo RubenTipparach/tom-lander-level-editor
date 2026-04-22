@@ -10,6 +10,10 @@ import { generate } from './generator.js';
 import { TILESETS, MAPS, MISSIONS, makeTerrainFromTileset } from './maps.js';
 import { buildLevelJson, parseLevelJson } from './level.js';
 import {
+  listLibrary, getEntry, saveEntry, renameEntry, deleteEntry,
+  changeType, entryPngBlob, defaultImagePath, librarySize,
+} from './library.js';
+import {
   HAS_FS, downloadBlob, saveBlob, writeToHandle, pickPng,
   listSnapshots, saveSnapshot, deleteSnapshot,
 } from './persistence.js';
@@ -96,6 +100,8 @@ function menuAction(act) {
     case 'redo': performRedo(); break;
     case 'snapshot-save': quickSnapshot(); break;
     case 'snapshot-manage': openSnapshotDialog(); break;
+    case 'lib-save': quickLibrarySave(); break;
+    case 'lib-manage': openLibraryDialog(); break;
     case 'gen-island':    showGenerate('island'); break;
     case 'gen-canyon':    showGenerate('canyon'); break;
     case 'gen-hills':     showGenerate('hills'); break;
