@@ -1,12 +1,11 @@
 """Generate sample racing levels for the Tom Lander web terrain editor.
 
-Each level produces three files in samples/racing/:
+Each level produces two files in samples/racing/:
 
-  <name>.png     16-color Picotron-palette heightmap (128x128 by default).
-  <name>.track   Plain-text track file (key=value + CSV) compatible with
-                 the editor's race-track import/export.
-  <name>.json    Combined level descriptor consumed by the game runtime
-                 (level_loader.lua). Contains Map, Track, and Markers.
+  <name>.png     32-color Picotron-palette heightmap (128x128 by default).
+  <name>.json    Unified level descriptor consumed by the game runtime
+                 (level_loader.lua) and the web editor. Contains Map,
+                 Track, and Markers in a single document.
 
 Run:  python tools/gen_racing_levels.py
 """
@@ -291,9 +290,8 @@ def build_level(spec: LevelSpec, out_dir: str):
             grid[y][x] = spec.track_height
 
     os.makedirs(out_dir, exist_ok=True)
-    png_path   = os.path.join(out_dir, spec.file_basename + '.png')
-    track_path = os.path.join(out_dir, spec.file_basename + '.track')
-    json_path  = os.path.join(out_dir, spec.file_basename + '.json')
+    png_path  = os.path.join(out_dir, spec.file_basename + '.png')
+    json_path = os.path.join(out_dir, spec.file_basename + '.json')
 
     write_png(png_path, grid)
 
@@ -306,16 +304,7 @@ def build_level(spec: LevelSpec, out_dir: str):
             name=f'CP {i + 1}',
         ))
 
-    # .track file
-    with open(track_path, 'w', encoding='utf-8') as f:
-        f.write(f'name={spec.name}\n')
-        f.write(f'laps={spec.laps}\n')
-        f.write(f'width={spec.track_width}\n')
-        f.write(f'checkpoints={len(checkpoints)}\n')
-        for cp in checkpoints:
-            f.write(f'{cp.x},{cp.z},{cp.y},{cp.time},{cp.name}\n')
-
-    # JSON level descriptor (game-loadable + editor-compatible)
+    # Unified level descriptor (game-loadable + editor-compatible)
     level = {
         'Map': {
             'name': spec.name,
@@ -344,7 +333,6 @@ def build_level(spec: LevelSpec, out_dir: str):
         json.dump(level, f, indent=2)
 
     print(f'  wrote {png_path}  ({spec.width}x{spec.height})')
-    print(f'  wrote {track_path}')
     print(f'  wrote {json_path}')
 
 

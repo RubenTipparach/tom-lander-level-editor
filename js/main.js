@@ -102,8 +102,6 @@ function menuAction(act) {
     case 'gen-plateau':   showGenerate('plateau'); break;
     case 'gen-mountains': showGenerate('mountains'); break;
     case 'track-new': newTrack(); break;
-    case 'track-load-legacy': $('fileOpenTrack').click(); break;
-    case 'track-save-legacy': downloadTrack(); break;
     case 'track-export-lua': exportTrackLua(); break;
     case 'track-clear': state.track.checkpoints.length = 0; refreshTrackUI(); view2d.draw(); view3d.markDirty(); break;
   }
@@ -347,11 +345,6 @@ function newTrack() {
   status(`Generated ${state.track.checkpoints.length} checkpoints.`);
 }
 
-function downloadTrack() {
-  const blob = new Blob([state.track.toFileString()], { type: 'text/plain' });
-  saveBlob(blob, `${state.track.name.replace(/\s+/g, '_').toLowerCase()}.track`,
-    [{ description: 'Race Track', accept: { 'text/plain': ['.track', '.txt'] } }]);
-}
 function exportTrackLua() {
   if (!state.track.checkpoints.length) { status('No checkpoints to export.'); return; }
   const w = state.heightmap?.width ?? 128;
@@ -360,16 +353,6 @@ function exportTrackLua() {
   saveBlob(blob, `track_${state.track.name.replace(/\s+/g, '_').toLowerCase()}.lua`,
     [{ description: 'Lua', accept: { 'text/plain': ['.lua', '.txt'] } }]);
 }
-$('fileOpenTrack').onchange = async e => {
-  const f = e.target.files[0]; if (!f) return;
-  const text = await f.text();
-  state.track = Track.fromFileString(text);
-  view2d.setTrack(state.track);
-  view3d.setTrack(state.track);
-  refreshTrackUI();
-  status(`Loaded track: ${state.track.name} (${state.track.checkpoints.length} checkpoints).`);
-  e.target.value = '';
-};
 
 // ───── Marker UI ─────
 

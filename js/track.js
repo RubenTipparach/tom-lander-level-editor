@@ -51,44 +51,6 @@ export class Track {
     }
   }
 
-  toFileString() {
-    const lines = [];
-    lines.push(`name=${this.name}`);
-    lines.push(`laps=${this.laps}`);
-    lines.push(`width=${this.width}`);
-    lines.push(`checkpoints=${this.checkpoints.length}`);
-    for (const cp of this.checkpoints) {
-      lines.push(`${cp.X},${cp.Z},${cp.HeightAboveGround},${cp.TimeLimit},${cp.Name}`);
-    }
-    return lines.join('\n');
-  }
-
-  static fromFileString(s) {
-    const t = new Track();
-    const lines = s.split(/\r?\n/);
-    let cpStart = 0;
-    for (let i = 0; i < lines.length; i++) {
-      const ln = lines[i];
-      if (ln.startsWith('name=')) t.name = ln.slice(5);
-      else if (ln.startsWith('laps=')) t.laps = parseInt(ln.slice(5), 10);
-      else if (ln.startsWith('width=')) t.width = parseInt(ln.slice(6), 10);
-      else if (ln.startsWith('checkpoints=')) cpStart = i + 1;
-    }
-    for (let i = cpStart; i < lines.length; i++) {
-      const parts = lines[i].split(',');
-      if (parts.length >= 4) {
-        t.checkpoints.push({
-          X: parseInt(parts[0], 10),
-          Z: parseInt(parts[1], 10),
-          HeightAboveGround: parseInt(parts[2], 10),
-          TimeLimit: parseInt(parts[3], 10),
-          Name: parts.slice(4).join(',') || `CP ${t.checkpoints.length + 1}`,
-        });
-      }
-    }
-    return t;
-  }
-
   exportLua(mapW, mapH) {
     const esc = (s) => String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
     const out = [];

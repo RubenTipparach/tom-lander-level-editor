@@ -1,8 +1,10 @@
 # Tom Lander Web Terrain Editor
 
-A self-contained, browser-based clone of `utilities/TerrainEditor` (the C# WinForms
-editor). Opens and saves the same heightmap PNGs and `.json` marker sidecars
-the game already consumes, plus the same `.track` files.
+A self-contained, browser-based level editor for Tom Lander. Reads and writes
+**unified racing-level JSON** documents that the game's `level_loader.lua`
+consumes directly: one JSON file per level with the heightmap path, map
+config, race checkpoints, and entity markers all in one place. Heightmaps are
+side files (PNG, Picotron 32-color palette).
 
 ## Run
 
@@ -24,9 +26,12 @@ Stop the server with `Ctrl+C` in the terminal window.
 * **Heightmap PNG IO** using the Picotron 32-color palette. Files are
   byte-identical to those produced by the desktop editor.
 * **Brush tools**: Paint, Erase, Smooth — same midpoint-circle radius algorithm.
-* **Race-track checkpoints**: load/save `.track` files; export to Lua for
-  pasting into `missions.lua` (`checkpoints_aseprite = { ... }`).
-* **Markers / entities**: JSON sidecar with the same `{Markers:[{X,Z,HeightOffset,Name,Group}], DualContour}` schema. Includes the same eight group colors (A...H).
+* **Race-track checkpoints**: edited inline; saved inside the unified level
+  JSON's `Track` block. `Track > Export to Lua snippet` still produces a
+  paste-friendly `checkpoints_aseprite = { ... }` block if you need it.
+* **Markers / entities**: stored in the same level JSON's `Markers` array
+  with the schema `{X, Z, HeightOffset, Name, Group}` and eight group colors
+  (A...H).
 * **Tileset presets**: Island and Desert; threshold sliders for low/mid/high
   bands; live previews of the four textures.
 * **2D view modes**: palette colors, flat zone colors, full-resolution
@@ -45,12 +50,11 @@ Stop the server with `Ctrl+C` in the terminal window.
 
 ## File operations
 
-| What                       | Source format                        | Target file                          |
+| What                       | Format                               | File                                 |
 | -------------------------- | ------------------------------------ | ------------------------------------ |
-| Heightmap                  | PNG (Picotron palette)               | `<map>.png`                          |
-| Markers / entities         | JSON                                 | `<map>.json` (sidecar to the PNG)    |
-| Race track                 | Plain text, `key=value` + CSV rows   | `<name>.track`                       |
-| Race track Lua             | Lua snippet                          | `track_<name>.lua`                   |
+| Level descriptor           | JSON (Map + Track + Markers)         | `<level>.json`                       |
+| Heightmap                  | PNG (Picotron palette)               | `<level>.png`  (referenced by JSON)  |
+| Race track Lua snippet     | Lua (export only)                    | `track_<name>.lua`                   |
 
 If your browser supports the **File System Access API** (recent
 Chrome/Edge/Brave), `Save` writes back to the file you opened. Otherwise the
