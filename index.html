@@ -259,6 +259,19 @@
   </form>
 </dialog>
 
+<dialog id="unsavedDialog">
+  <form method="dialog">
+    <h3>Unsaved Changes</h3>
+    <p class="hint" id="unsavedHint">The current map has unsaved edits. What do you want to do?</p>
+    <label>Save as local map named <input id="unsavedName" type="text"></label>
+    <menu>
+      <button value="cancel">Cancel</button>
+      <button value="discard" class="danger">Discard</button>
+      <button value="save" id="unsavedSave">Save</button>
+    </menu>
+  </form>
+</dialog>
+
 <dialog id="gameRootDialog">
   <form method="dialog">
     <h3>Game Root URL</h3>

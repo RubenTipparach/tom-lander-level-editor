@@ -7,7 +7,7 @@ import { Track } from './track.js';
 import { Terrain2D } from './terrain2d.js';
 import { Terrain3D } from './terrain3d.js';
 import { generate } from './generator.js';
-import { TILESETS, MAPS, MISSIONS, makeTerrainFromTileset } from './maps.js';
+import { TILESETS, MAPS, makeTerrainFromTileset } from './maps.js';
 import { buildLevelJson, parseLevelJson } from './level.js';
 import {
   listLibrary, getEntry, saveEntry, renameEntry, deleteEntry,
@@ -32,7 +32,51 @@ const state = {
   mapMeta: null,          // extra Map fields preserved across save/load
   gameRoot: localStorage.getItem('webTE.gameRoot') || autoDetectGameRoot(),
   selectedHeight: 1,
+  dirty: false,           // Any unsaved edits to heightmap/markers/track/settings
 };
+
+// Mark the current map as dirty (unsaved edits) and refresh the title asterisk.
+function markDirty() {
+  state.dirty = true;
+  updateTitle();
+}
+function clearDirty() {
+  state.dirty = false;
+  if (state.heightmap) state.heightmap.dirty = false;
+  updateTitle();
+}
+
+// Modal to prompt the user when an action would replace the current (dirty) map.
+// Returns one of: "save" (saved and OK to continue), "discard", or "cancel".
+async function confirmDiscardOrSave() {
+  if (!state.dirty) return 'discard';  // Nothing to preserve.
+  const dlg = $('unsavedDialog');
+  const nameEl = $('unsavedName');
+  nameEl.value = state.filePath || `map-${new Date().toISOString().slice(0,10)}`;
+  return new Promise(resolve => {
+    const onClose = () => {
+      dlg.removeEventListener('close', onClose);
+      const choice = dlg.returnValue;
+      if (choice === 'save') {
+        const name = (nameEl.value || '').trim();
+        if (!name) { resolve('cancel'); return; }
+        if (!state.heightmap) { resolve('discard'); return; }
+        saveSnapshot(name, snapshotPayload());
+        state.filePath = name;
+        clearDirty();
+        buildMapsMenu();
+        status(`Saved local map "${name}".`);
+        resolve('save');
+      } else if (choice === 'discard') {
+        resolve('discard');
+      } else {
+        resolve('cancel');
+      }
+    };
+    dlg.addEventListener('close', onClose);
+    dlg.showModal();
+  });
+}
 
 // ───── DOM refs ─────
 
@@ -52,6 +96,8 @@ view3d.setTrack(state.track);
 const MAPS_MENU = $('mapsDropdown');
 function buildMapsMenu() {
   MAPS_MENU.innerHTML = '';
+
+  // Sample maps (ship with the editor)
   for (let i = 0; i < MAPS.length; i++) {
     const m = MAPS[i];
     const b = document.createElement('button');
@@ -59,14 +105,91 @@ function buildMapsMenu() {
     b.onclick = () => loadMapPreset(i);
     MAPS_MENU.appendChild(b);
   }
+
+  // Local Maps flyout: user snapshots saved to localStorage
   MAPS_MENU.appendChild(document.createElement('hr'));
-  for (let i = 0; i < MISSIONS.length; i++) {
-    const [name, idx] = MISSIONS[i];
-    const b = document.createElement('button');
-    b.textContent = name;
-    b.onclick = () => loadMapPreset(idx);
-    MAPS_MENU.appendChild(b);
+  const flyoutWrap = document.createElement('div');
+  flyoutWrap.className = 'flyout';
+
+  const flyoutBtn = document.createElement('button');
+  flyoutBtn.textContent = 'Local Maps \u25B8';   // ▸
+  flyoutBtn.className = 'flyout-toggle';
+  flyoutBtn.onclick = (e) => { e.stopPropagation(); flyoutWrap.classList.toggle('open'); };
+  flyoutWrap.appendChild(flyoutBtn);
+
+  const flyoutPanel = document.createElement('div');
+  flyoutPanel.className = 'flyout-panel';
+
+  const snapshots = listSnapshots();
+  const names = Object.keys(snapshots).sort();
+  if (names.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'flyout-empty';
+    empty.textContent = '(no saved maps yet)';
+    flyoutPanel.appendChild(empty);
+  } else {
+    for (const name of names) {
+      const meta = snapshots[name];
+      const row = document.createElement('div');
+      row.className = 'flyout-row';
+
+      const load = document.createElement('button');
+      load.className = 'flyout-load';
+      load.textContent = `${name}  (${meta.width}x${meta.height})`;
+      load.onclick = async () => {
+        if (await confirmDiscardOrSave() === 'cancel') return;
+        restoreSnapshot(meta);
+        state.filePath = name;
+        updateTitle();
+        status(`Loaded local map "${name}".`);
+        // Close menus
+        document.querySelectorAll('#menubar .menu.open').forEach(m => m.classList.remove('open'));
+        flyoutWrap.classList.remove('open');
+      };
+      row.appendChild(load);
+
+      const del = document.createElement('button');
+      del.className = 'flyout-del';
+      del.title = 'Delete';
+      del.textContent = '\u00D7';  // ×
+      del.onclick = (e) => {
+        e.stopPropagation();
+        if (!confirm(`Delete local map "${name}"?`)) return;
+        deleteSnapshot(name);
+        buildMapsMenu();  // refresh
+        // Keep the Maps menu open so the user can see the removal
+        document.querySelector('#menubar .menu:has(#mapsDropdown)')?.classList.add('open');
+        flyoutWrap.classList.add('open');
+      };
+      row.appendChild(del);
+
+      flyoutPanel.appendChild(row);
+    }
   }
+
+  // "Save current as new local map" action
+  flyoutPanel.appendChild(document.createElement('hr'));
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'flyout-save';
+  saveBtn.textContent = '\u2795 Save current as local map\u2026';  // ➕
+  saveBtn.onclick = (e) => {
+    e.stopPropagation();
+    if (!state.heightmap) { alert('Load or generate a heightmap first.'); return; }
+    const name = prompt('Name for this local map:',
+      state.filePath || `map-${new Date().toISOString().slice(0,10)}`);
+    if (!name) return;
+    saveSnapshot(name, snapshotPayload());
+    state.filePath = name;
+    clearDirty();
+    status(`Saved local map "${name}".`);
+    buildMapsMenu();
+    document.querySelector('#menubar .menu:has(#mapsDropdown)')?.classList.add('open');
+    flyoutWrap.classList.add('open');
+  };
+  flyoutPanel.appendChild(saveBtn);
+
+  flyoutWrap.appendChild(flyoutPanel);
+  MAPS_MENU.appendChild(flyoutWrap);
 }
 buildMapsMenu();
 
@@ -185,6 +308,7 @@ function updateThresholds() {
   updateTextureLabels();
   view2d.invalidateBuffer(); view2d.draw();
   view3d.markDirty();
+  markDirty();
 }
 function updateTextureLabels() {
   const t = state.terrain;
@@ -196,12 +320,14 @@ function updateTextureLabels() {
 
 $('dualContour').onchange = () => {
   state.markers.dualContour = $('dualContour').checked;
+  markDirty();
   status(state.markers.dualContour ? 'Dual contouring enabled. Save to persist.'
                                    : 'Dual contouring disabled. Save to persist.');
 };
 
 $('nightMode').onchange = () => {
   state.markers.nightMode = $('nightMode').checked;
+  markDirty();
   status(state.markers.nightMode ? 'Night mode enabled. Save to persist.'
                                  : 'Night mode disabled. Save to persist.');
 };
@@ -215,6 +341,7 @@ async function applyTileset(idx) {
   await loadTerrainTextures();
   view2d.setTerrain(state.terrain);
   view3d.setTerrain(state.terrain);
+  markDirty();
 }
 
 async function loadTerrainTextures() {
@@ -265,7 +392,7 @@ function drawTexPreview(id, img) {
 
 view2d.onChange = (final) => {
   view3d.markDirty();
-  updateTitle();
+  markDirty();
 };
 view2d.onCursor = (x, y, h) => {
   if (state.heightmap && x >= 0 && x < state.heightmap.width && y >= 0 && y < state.heightmap.height)
@@ -273,16 +400,16 @@ view2d.onCursor = (x, y, h) => {
   else
     $('cursorInfo').textContent = '';
 };
-view2d.onTrackChange = () => { refreshTrackUI(); view3d.setTrack(state.track); };
-view2d.onMarkerChange = () => { refreshMarkerUI(); view3d.setMarkers(state.markers); };
+view2d.onTrackChange = () => { refreshTrackUI(); view3d.setTrack(state.track); markDirty(); };
+view2d.onMarkerChange = () => { refreshMarkerUI(); view3d.setMarkers(state.markers); markDirty(); };
 view2d.onMarkerSelect = i => selectMarkerInList(i);
 
 // ───── Track UI ─────
 
 const cpListEl = $('cpList');
-$('trackName').oninput  = () => state.track.name = $('trackName').value;
-$('trackLaps').oninput  = () => state.track.laps = clamp(parseInt($('trackLaps').value || '1'), 1, 10);
-$('trackWidth').oninput = () => { state.track.width = clamp(parseInt($('trackWidth').value || '2'), 2, 30); view2d.draw(); view3d.setTrack(state.track); };
+$('trackName').oninput  = () => { state.track.name = $('trackName').value; markDirty(); };
+$('trackLaps').oninput  = () => { state.track.laps = clamp(parseInt($('trackLaps').value || '1'), 1, 10); markDirty(); };
+$('trackWidth').oninput = () => { state.track.width = clamp(parseInt($('trackWidth').value || '2'), 2, 30); view2d.draw(); view3d.setTrack(state.track); markDirty(); };
 $('cpHeight').oninput = () => updateSelectedCpProps();
 $('cpTime').oninput   = () => updateSelectedCpProps();
 $('cpName').oninput   = () => updateSelectedCpProps();
@@ -290,7 +417,7 @@ $('cpUp').onclick     = () => moveCp(-1);
 $('cpDown').onclick   = () => moveCp(1);
 $('cpDelete').onclick = () => {
   const i = currentCpIndex();
-  if (i >= 0) { state.track.removeAt(i); refreshTrackUI(); view2d.draw(); view3d.setTrack(state.track); }
+  if (i >= 0) { state.track.removeAt(i); refreshTrackUI(); view2d.draw(); view3d.setTrack(state.track); markDirty(); }
 };
 
 function refreshTrackUI() {
@@ -329,6 +456,7 @@ function updateSelectedCpProps() {
   refreshTrackUI();
   selectCp(i);
   view3d.setTrack(state.track);
+  markDirty();
 }
 function moveCp(dir) {
   const i = currentCpIndex();
@@ -338,9 +466,12 @@ function moveCp(dir) {
   [arr[i], arr[j]] = [arr[j], arr[i]];
   refreshTrackUI(); selectCp(j);
   view3d.setTrack(state.track);
+  markDirty();
 }
 
-function newTrack() {
+async function newTrack() {
+  const decision = await confirmDiscardOrSave();
+  if (decision === 'cancel') return;
   const w = state.heightmap?.width ?? 128;
   const h = state.heightmap?.height ?? 128;
   state.track = new Track();
@@ -348,6 +479,7 @@ function newTrack() {
   view2d.setTrack(state.track);
   view3d.setTrack(state.track);
   refreshTrackUI();
+  markDirty();  // new track replaced the old one
   status(`Generated ${state.track.checkpoints.length} checkpoints.`);
 }
 
@@ -422,6 +554,7 @@ function applyMarkerEdit() {
   m.Group = editGroupSel.value;
   refreshMarkerUI();
   view2d.draw(); view3d.setMarkers(state.markers);
+  markDirty();
 }
 ['markerName', 'markerX', 'markerZ', 'markerHeight'].forEach(id => $(id).oninput = applyMarkerEdit);
 editGroupSel.onchange = applyMarkerEdit;
@@ -433,6 +566,7 @@ $('markerDelete').onclick = () => {
   _selectedMarker = -1;
   refreshMarkerUI();
   view2d.draw(); view3d.setMarkers(state.markers);
+  markDirty();
 };
 $('markerClear').onclick = () => {
   if (!state.markers.markers.length) return;
@@ -442,6 +576,7 @@ $('markerClear').onclick = () => {
   _selectedMarker = -1;
   refreshMarkerUI();
   view2d.draw(); view3d.setMarkers(state.markers);
+  markDirty();
 };
 
 // ───── File operations ─────
@@ -449,6 +584,7 @@ $('markerClear').onclick = () => {
 const fileOpen = $('fileOpen');
 fileOpen.onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
+  if (await confirmDiscardOrSave() === 'cancel') { e.target.value = ''; return; }
   await loadHeightmapFile(f);
   e.target.value = '';
 };
@@ -458,6 +594,7 @@ async function openPng() { fileOpen.click(); }
 async function openLevel() { $('fileOpenLevel').click(); }
 $('fileOpenLevel').onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
+  if (await confirmDiscardOrSave() === 'cancel') { e.target.value = ''; return; }
   await loadLevelFile(f);
   e.target.value = '';
 };
@@ -499,8 +636,8 @@ async function loadLevelFile(f) {
   $('nightMode').checked = !!state.markers.nightMode;
   refreshMarkerUI();
   refreshTrackUI();
+  clearDirty();
   status(`Loaded level "${parsed.map.name}" — ${state.track.checkpoints.length} checkpoints, ${state.markers.markers.length} markers.`);
-  updateTitle();
 }
 
 // ── Open PNG only (legacy heightmap-only mode) ───────────────────────────
@@ -522,8 +659,8 @@ async function loadHeightmapFile(f) {
     refreshTrackUI();
     $('dualContour').checked = false;
     $('nightMode').checked = false;
+    clearDirty();
     status(`Loaded PNG ${f.name} (${state.heightmap.width}x${state.heightmap.height}). Use File > Save Level to export a unified JSON.`);
-    updateTitle();
   } catch (e) {
     status('Failed to load PNG: ' + e.message);
   }
@@ -552,9 +689,8 @@ async function saveLevel() {
     const json = new Blob([currentLevelJson()], { type: 'application/json' });
     await writeToHandle(state.pngHandle, png);
     await writeToHandle(state.jsonHandle, json);
-    state.heightmap.dirty = false;
+    clearDirty();
     status('Saved level.');
-    updateTitle();
   } else {
     await saveLevelAs();
   }
@@ -572,9 +708,8 @@ async function saveLevelAs() {
     [{ description: 'Heightmap PNG', accept: { 'image/png': ['.png'] } }]);
   if (ph) state.pngHandle = ph;
 
-  state.heightmap.dirty = false;
+  clearDirty();
   status('Saved level (JSON + PNG).');
-  updateTitle();
 }
 async function downloadPng() {
   if (!state.heightmap) return;
@@ -583,6 +718,7 @@ async function downloadPng() {
 }
 
 async function loadMapPreset(idx) {
+  if (await confirmDiscardOrSave() === 'cancel') return;
   const m = MAPS[idx];
   const base = m.heightmapPath.split('/').pop();
   const candidates = uniqueRoots(state.gameRoot, './').map(r => r + m.heightmapPath)
@@ -623,8 +759,8 @@ async function loadMapPreset(idx) {
     $('dualContour').checked = state.markers.dualContour;
     $('nightMode').checked = !!state.markers.nightMode;
     refreshMarkerUI();
+    clearDirty();
     status(`Loaded preset map: ${m.displayName} (${state.heightmap.width}x${state.heightmap.height}).`);
-    updateTitle();
   } catch (e) {
     status(`Failed to load ${url}: ${e.message}. Set Game Root URL via File menu.`);
   }
@@ -633,7 +769,8 @@ async function loadMapPreset(idx) {
 // ───── New / Generate ─────
 
 const newDlg = $('newMapDialog');
-function openNewDialog() {
+async function openNewDialog() {
+  if (await confirmDiscardOrSave() === 'cancel') return;
   newDlg.showModal();
 }
 $('newMapOk').onclick = e => {
@@ -649,13 +786,14 @@ $('newMapOk').onclick = e => {
   view3d.setHeightmap(state.heightmap, state.terrain);
   view3d.setMarkers(state.markers);
   refreshMarkerUI();
+  clearDirty();
   status(`New ${w}x${h} heightmap.`);
-  updateTitle();
 };
 
 const genDlg = $('generateDialog');
 let _genKind = 'island';
-function showGenerate(kind) {
+async function showGenerate(kind) {
+  if (await confirmDiscardOrSave() === 'cancel') return;
   _genKind = kind;
   $('genTitle').textContent = `Generate Terrain: ${kind}`;
   if (state.heightmap) { $('genW').value = state.heightmap.width; $('genH').value = state.heightmap.height; }
@@ -675,8 +813,8 @@ $('genOk').onclick = e => {
   state.heightmap.filePath = state.filePath || 'generated.png';
   view2d.setHeightmap(state.heightmap, state.terrain);
   view3d.setHeightmap(state.heightmap, state.terrain);
+  markDirty();  // generated content not saved anywhere yet
   status(`Generated ${_genKind} (${opts.width}x${opts.height}, seed=${opts.seed}).`);
-  updateTitle();
 };
 
 // ───── Snapshots (named state checkpoints in localStorage) ─────
@@ -686,6 +824,8 @@ function quickSnapshot() {
   const name = prompt('Snapshot name:', `snap-${new Date().toISOString().replace(/[-:]/g,'').slice(0,15)}`);
   if (!name) return;
   saveSnapshot(name, snapshotPayload());
+  clearDirty();
+  buildMapsMenu();
   status(`Snapshot "${name}" saved (browser localStorage).`);
 }
 function snapshotPayload() {
@@ -726,7 +866,7 @@ function restoreSnapshot(payload) {
   refreshTrackUI();
   $('dualContour').checked = state.markers.dualContour;
   $('nightMode').checked = !!state.markers.nightMode;
-  updateTitle();
+  clearDirty();
 }
 
 const snapDlg = $('snapshotDialog');
@@ -739,6 +879,9 @@ $('snapSaveBtn').onclick = () => {
   const name = $('snapName').value.trim();
   if (!name) return;
   saveSnapshot(name, snapshotPayload());
+  state.filePath = name;
+  clearDirty();
+  buildMapsMenu();
   $('snapName').value = '';
   refreshSnapshotList();
   status(`Snapshot "${name}" saved.`);
@@ -756,7 +899,12 @@ function refreshSnapshotList() {
     const btns = document.createElement('span');
     const load = document.createElement('button');
     load.textContent = 'Load'; load.type = 'button';
-    load.onclick = () => { restoreSnapshot(meta); status(`Loaded snapshot "${name}".`); snapDlg.close(); };
+    load.onclick = async () => {
+      if (await confirmDiscardOrSave() === 'cancel') return;
+      restoreSnapshot(meta);
+      status(`Loaded snapshot "${name}".`);
+      snapDlg.close();
+    };
     const del = document.createElement('button');
     del.textContent = 'Delete'; del.className = 'danger'; del.type = 'button';
     del.onclick = () => { deleteSnapshot(name); refreshSnapshotList(); };
@@ -782,6 +930,166 @@ function base64ToArrayBuffer(s) {
   const b = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) b[i] = bin.charCodeAt(i);
   return b.buffer;
+}
+
+// ───── Library (localStorage-backed level collection) ─────
+
+const libDlg = $('libraryDialog');
+
+function quickLibrarySave() {
+  if (!state.heightmap) { alert('Load or generate a heightmap first.'); return; }
+  const suggested = (state.filePath || 'level').replace(/\.(png|json)$/i, '');
+  const name = (prompt('Save as (library name):', suggested) || '').trim();
+  if (!name) return;
+  const type = confirm('OK = Racing map.\nCancel = Campaign map.') ? 'racing' : 'campaign';
+  saveCurrentToLibrary(name, type)
+    .then(() => status(`Saved "${name}" to ${type} library.`))
+    .catch(e => status('Library save failed: ' + e.message));
+}
+
+async function saveCurrentToLibrary(name, type) {
+  const png = await state.heightmap.toPngBlob();
+  // Stamp the level JSON with the canonical export-image path for this type.
+  const meta = { ...(state.mapMeta || {}) };
+  meta.image = defaultImagePath(name, type);
+  meta.basename = name;
+  if (!meta.name) meta.name = state.track.name || name;
+  state.mapMeta = meta;
+  const levelJson = currentLevelJson();
+  await saveEntry({
+    name, type, levelJson, pngBlob: png,
+    width: state.heightmap.width, height: state.heightmap.height,
+  });
+}
+
+function openLibraryDialog() {
+  $('libSaveName').value = (state.filePath || '').replace(/\.(png|json)$/i, '');
+  refreshLibraryList();
+  libDlg.showModal();
+}
+
+$('libSaveBtn').onclick = async () => {
+  const name = $('libSaveName').value.trim();
+  if (!name) { alert('Name is required.'); return; }
+  if (!state.heightmap) { alert('Load or generate a heightmap first.'); return; }
+  const type = $('libSaveType').value;
+  if (getEntry(name) && !confirm(`"${name}" already exists. Overwrite?`)) return;
+  try {
+    await saveCurrentToLibrary(name, type);
+    refreshLibraryList();
+    status(`Saved "${name}" to ${type} library.`);
+  } catch (e) {
+    alert('Save failed: ' + e.message);
+  }
+};
+
+function refreshLibraryList() {
+  const grouped = listLibrary();
+  fillLibSection('libListRacing',   grouped.racing,   'racing');
+  fillLibSection('libListCampaign', grouped.campaign, 'campaign');
+  $('libCountRacing').textContent   = `(${grouped.racing.length})`;
+  $('libCountCampaign').textContent = `(${grouped.campaign.length})`;
+  const kb = (librarySize() / 1024).toFixed(1);
+  $('libSize').textContent = `Library size: ${kb} KB in browser localStorage.`;
+}
+
+function fillLibSection(ulId, entries, type) {
+  const ul = $(ulId);
+  ul.innerHTML = '';
+  if (!entries.length) {
+    const li = document.createElement('li');
+    li.className = 'lib-empty';
+    li.textContent = '(empty)';
+    li.style.display = 'block';
+    ul.appendChild(li);
+    return;
+  }
+  for (const e of entries) {
+    const li = document.createElement('li');
+    const date = new Date(e.savedAt).toLocaleString();
+    const dim = (e.width && e.height) ? `${e.width}x${e.height}` : '';
+
+    const left = document.createElement('div');
+    left.innerHTML = `<span class="lib-name">${escapeHtml(e.name)}</span>
+                      <div class="lib-meta">${dim}  ${date}</div>`;
+    li.appendChild(left);
+
+    const otherType = type === 'racing' ? 'campaign' : 'racing';
+    const moveBtn = document.createElement('button');
+    moveBtn.type = 'button';
+    moveBtn.textContent = `→ ${otherType}`;
+    moveBtn.title = `Move to ${otherType}`;
+    moveBtn.onclick = () => { changeType(e.name, otherType); refreshLibraryList(); };
+
+    const actions = document.createElement('div');
+    actions.className = 'lib-actions';
+    const load = mkBtn('Load',   () => { loadFromLibrary(e.name); libDlg.close(); });
+    const exp  = mkBtn('Export', () => exportLibraryEntry(e.name));
+    const ren  = mkBtn('Rename', () => {
+      const n = prompt('Rename to:', e.name);
+      if (!n || n === e.name) return;
+      try { renameEntry(e.name, n.trim()); refreshLibraryList(); }
+      catch (err) { alert(err.message); }
+    });
+    const del  = mkBtn('Delete', () => {
+      if (confirm(`Delete "${e.name}" from library?`)) { deleteEntry(e.name); refreshLibraryList(); }
+    });
+    del.classList.add('danger');
+    actions.append(load, exp, ren, del);
+
+    li.appendChild(moveBtn);
+    li.appendChild(actions);
+    ul.appendChild(li);
+  }
+}
+
+function mkBtn(text, fn) {
+  const b = document.createElement('button');
+  b.type = 'button'; b.textContent = text; b.onclick = fn;
+  return b;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+async function loadFromLibrary(name) {
+  const e = getEntry(name);
+  if (!e) { status('Library entry not found: ' + name); return; }
+  const parsed = parseLevelJson(e.levelJson);
+  if (e.pngBase64) {
+    const blob = await entryPngBlob(e);
+    state.heightmap = await Heightmap.fromPng(blob);
+  } else {
+    state.heightmap = new Heightmap(parsed.map.width, parsed.map.height);
+  }
+  state.heightmap.filePath = parsed.map.image.split('/').pop();
+  state.filePath = e.name;
+  state.markers = parsed.markers;
+  state.track   = parsed.track;
+  state.mapMeta = parsed.map;
+
+  view2d.setHeightmap(state.heightmap, state.terrain);
+  view2d.setMarkers(state.markers);
+  view2d.setTrack(state.track);
+  view3d.setHeightmap(state.heightmap, state.terrain);
+  view3d.setMarkers(state.markers);
+  view3d.setTrack(state.track);
+  $('dualContour').checked = !!state.markers.dualContour;
+  $('nightMode').checked = !!state.markers.nightMode;
+  refreshMarkerUI();
+  refreshTrackUI();
+  status(`Loaded "${name}" from library (${e.type}).`);
+  updateTitle();
+}
+
+async function exportLibraryEntry(name) {
+  const e = getEntry(name);
+  if (!e) return;
+  // Download JSON and PNG side by side. Browsers serialize the two clicks.
+  downloadBlob(new Blob([e.levelJson], { type: 'application/json' }), `${name}.json`);
+  if (e.pngBase64) downloadBlob(await entryPngBlob(e), `${name}.png`);
 }
 
 // ───── Game root dialog ─────
@@ -846,10 +1154,19 @@ window.addEventListener('keydown', e => {
 function status(msg) { $('status').textContent = msg; }
 function updateTitle() {
   const name = state.filePath || 'untitled';
-  $('title').textContent = name + (state.heightmap?.dirty ? ' *' : '');
-  document.title = `Tom Lander Web Terrain Editor - ${name}`;
+  const dirty = state.dirty || state.heightmap?.dirty;
+  $('title').textContent = name + (dirty ? ' *' : '');
+  document.title = `Tom Lander Web Terrain Editor - ${name}${dirty ? ' *' : ''}`;
 }
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+// Browser close / reload guard
+window.addEventListener('beforeunload', (e) => {
+  if (state.dirty) {
+    e.preventDefault();
+    e.returnValue = '';  // Chrome requires this
+  }
+});
 
 function autoDetectGameRoot() {
   // When served at /utilities/WebTerrainEditor/ inside the game repo, the

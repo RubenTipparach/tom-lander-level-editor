@@ -58,6 +58,39 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 4px 0; }
   background: transparent; border: 0; padding: 5px 14px; color: var(--fg);
 }
 #menubar .dropdown button:hover { background: var(--accent); color: #000; }
+
+/* Nested flyout (e.g. "Local Maps ▸" inside the Maps dropdown) */
+#menubar .dropdown .flyout { position: relative; }
+#menubar .dropdown .flyout-toggle { width: 100%; text-align: left; }
+#menubar .dropdown .flyout-panel {
+  display: none; position: absolute; left: 100%; top: 0;
+  background: #34343a; border: 1px solid #111;
+  min-width: 240px; padding: 4px 0; box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  z-index: 300;
+}
+#menubar .dropdown .flyout:hover > .flyout-panel,
+#menubar .dropdown .flyout.open > .flyout-panel { display: block; }
+#menubar .dropdown .flyout-row {
+  display: flex; align-items: center; gap: 2px;
+}
+#menubar .dropdown .flyout-load {
+  flex: 1; text-align: left;
+  background: transparent; border: 0; padding: 5px 14px; color: var(--fg);
+}
+#menubar .dropdown .flyout-load:hover { background: var(--accent); color: #000; }
+#menubar .dropdown .flyout-del {
+  background: transparent; border: 0; color: #c66;
+  padding: 5px 10px; cursor: pointer;
+}
+#menubar .dropdown .flyout-del:hover { background: #a33; color: #fff; }
+#menubar .dropdown .flyout-empty {
+  padding: 6px 14px; color: var(--fg-dim); font-style: italic; font-size: 11px;
+}
+#menubar .dropdown .flyout-save {
+  width: 100%; text-align: left;
+  background: transparent; border: 0; padding: 5px 14px; color: var(--accent);
+}
+#menubar .dropdown .flyout-save:hover { background: var(--accent); color: #000; }
 .spacer { flex: 1; }
 #title { color: var(--fg-dim); padding: 0 8px; }
 
