@@ -280,17 +280,18 @@ $('brushSize').oninput = e => { view2d.brushRadius = clamp(parseInt(e.target.val
 $('brushDown').onclick = () => { view2d.brushRadius = Math.max(0, view2d.brushRadius - 1); $('brushSize').value = view2d.brushRadius; view2d.draw(); };
 $('brushUp').onclick   = () => { view2d.brushRadius = Math.min(32, view2d.brushRadius + 1); $('brushSize').value = view2d.brushRadius; view2d.draw(); };
 
+// 2D view is ALWAYS the heightmap palette — you need to see the actual
+// height values while painting. The "Flat Zones" / "3D Textured" toggles
+// only affect the 3D preview now.
 $('toggleZones').onclick = () => {
   $('toggleZones').classList.toggle('active');
   $('toggleTextured').classList.remove('active');
-  view2d.setViewMode($('toggleZones').classList.contains('active') ? 'zones' : 'palette');
   view3d.setTextured(false);
 };
 $('toggleTextured').onclick = () => {
   $('toggleTextured').classList.toggle('active');
   $('toggleZones').classList.remove('active');
   const on = $('toggleTextured').classList.contains('active');
-  view2d.setViewMode(on ? 'textured' : 'palette');
   view3d.setTextured(on);
 };
 $('reset3D').onclick = () => view3d.resetCamera();
@@ -843,12 +844,19 @@ async function loadLevelFile(f) {
       try { const r = await fetch(u); if (r.ok) { png = await r.blob(); pngUrl = u; break; } }
       catch { /* keep trying */ }
     }
+    // No autoload found — ask the user to pick the PNG.
     if (!png) {
-      status(`Loaded JSON but no heightmap_b64 and no PNG found (tried ${baseName}.png and fallbacks). Use File > Open PNG only, or set Game Root URL.`);
-      return;
+      status(`No heightmap bytes in JSON and no sibling PNG found — pick a PNG.`);
+      const picked = await pickFile('.png,image/png');
+      if (!picked) {
+        status('Cancelled: level not loaded (no heightmap available).');
+        return;
+      }
+      png = picked;
+      pngUrl = picked.name;
     }
     state.heightmap = await Heightmap.fromPng(png);
-    state.heightmap.filePath = pngUrl.split('/').pop();
+    state.heightmap.filePath = (pngUrl || 'level.png').split('/').pop();
   }
   state.filePath = (f.name || 'level').replace(/\.json$/i, '');
   state.markers = parsed.markers;
@@ -870,15 +878,52 @@ async function loadLevelFile(f) {
   status(`Loaded level "${parsed.map.name}" — ${state.track.checkpoints.length} checkpoints, ${state.markers.markers.length} markers.`);
 }
 
-// ── Open PNG only (legacy heightmap-only mode) ───────────────────────────
+// ── Open PNG only (with optional JSON sidecar) ───────────────────────────
 async function loadHeightmapFile(f) {
   try {
     state.heightmap = await Heightmap.fromPng(f);
     state.heightmap.filePath = f.name;
     state.filePath = f.name.replace(/\.png$/i, '');
-    state.markers = new MarkerSet();
-    state.track = new Track();
-    state.mapMeta = null;
+
+    // Try to auto-find a matching JSON sidecar by convention (e.g.
+    // canyon_run.png → canyon_run.json in the game assets).
+    const baseName = state.filePath;
+    let sidecarText = null;
+    const candidates = [];
+    const roots = uniqueRoots(state.gameRoot, './');
+    for (const root of roots) candidates.push(root + `assets/racing_maps/${baseName}.json`);
+    candidates.push(`./samples/racing/${baseName}.json`);
+    for (const u of candidates) {
+      try { const r = await fetch(u); if (r.ok) { sidecarText = await r.text(); break; } }
+      catch { /* keep trying */ }
+    }
+    // If no sidecar was autoloaded, offer a picker for the user to supply one.
+    if (!sidecarText && confirm(`Loaded ${f.name}. Also load a matching JSON sidecar (track + markers)?`)) {
+      const pickedJson = await pickFile('.json,application/json');
+      if (pickedJson) {
+        try { sidecarText = await pickedJson.text(); }
+        catch { /* fall through — no sidecar */ }
+      }
+    }
+
+    if (sidecarText) {
+      try {
+        const parsed = parseLevelJson(sidecarText);
+        state.markers = parsed.markers;
+        state.track   = parsed.track;
+        state.mapMeta = parsed.map;
+      } catch (e) {
+        console.warn('Sidecar JSON parse failed:', e.message);
+        state.markers = new MarkerSet();
+        state.track   = new Track();
+        state.mapMeta = null;
+      }
+    } else {
+      state.markers = new MarkerSet();
+      state.track   = new Track();
+      state.mapMeta = null;
+    }
+
     view2d.setHeightmap(state.heightmap, state.terrain);
     view2d.setMarkers(state.markers);
     view2d.setTrack(state.track);
@@ -887,11 +932,14 @@ async function loadHeightmapFile(f) {
     view3d.setTrack(state.track);
     refreshMarkerUI();
     refreshTrackUI();
-    $('dualContour').checked = false;
-    $('nightMode').checked = false;
+    $('dualContour').checked = !!state.markers.dualContour;
+    $('nightMode').checked = !!state.markers.nightMode;
     syncAltitudeUiFromMapMeta();
     clearDirty();
-    status(`Loaded PNG ${f.name} (${state.heightmap.width}x${state.heightmap.height}). Use File > Save Level to export a unified JSON.`);
+    const extra = sidecarText
+      ? ` with ${state.track.checkpoints.length} checkpoints + ${state.markers.markers.length} markers`
+      : ' (no JSON sidecar)';
+    status(`Loaded ${f.name} (${state.heightmap.width}x${state.heightmap.height})${extra}.`);
   } catch (e) {
     status('Failed to load PNG: ' + e.message);
   }
@@ -1057,6 +1105,30 @@ $('genOk').onclick = e => {
 };
 
 // ───── Snapshots (named state checkpoints in localStorage) ─────
+
+// Pop a native file picker for the given accept string (e.g. ".png").
+// Returns the picked File, or null if the user cancelled.
+function pickFile(accept) {
+  return new Promise(resolve => {
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = accept;
+    inp.style.display = 'none';
+    document.body.appendChild(inp);
+    let settled = false;
+    inp.onchange = () => {
+      settled = true;
+      resolve(inp.files && inp.files[0] ? inp.files[0] : null);
+      document.body.removeChild(inp);
+    };
+    // Fire-and-forget fallback: if the picker is dismissed without choosing,
+    // there's no reliable event. Clean up after a generous delay.
+    inp.click();
+    setTimeout(() => {
+      if (!settled) { resolve(null); try { document.body.removeChild(inp); } catch {} }
+    }, 60 * 1000);
+  });
+}
 
 // Small helper: pop open the Maps → Local Maps flyout so a freshly-saved
 // entry is immediately visible to the user.
@@ -1494,7 +1566,7 @@ function uniqueRoots(...roots) {
 }
 
 // initial state — start with the textured 3D view on (matches game shader).
-view2d.setViewMode('textured');
+view2d.setViewMode('palette');  // 2D is always the heightmap palette view
 view3d.setTextured(true);
 updateTextureLabels();
 loadTerrainTextures().catch(()=>{});
