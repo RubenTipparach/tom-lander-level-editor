@@ -11,13 +11,12 @@
     <button data-menu="file">File</button>
     <div class="dropdown">
       <button data-act="new">New&hellip;</button>
-      <button data-act="open">Open PNG&hellip;</button>
-      <button data-act="open-bundle">Open Folder (PNG + JSON)</button>
+      <button data-act="open-level">Open Level (JSON)&hellip;</button>
+      <button data-act="open">Open PNG only&hellip;</button>
       <hr>
-      <button data-act="save">Save</button>
-      <button data-act="save-as">Save As&hellip;</button>
-      <button data-act="save-png">Download Heightmap PNG</button>
-      <button data-act="save-json">Download Markers JSON</button>
+      <button data-act="save-level">Save Level (JSON + PNG)</button>
+      <button data-act="save-level-as">Save Level As&hellip;</button>
+      <button data-act="save-png">Download PNG only</button>
       <hr>
       <button data-act="set-game-root">Set Game Root URL&hellip;</button>
     </div>
@@ -50,11 +49,12 @@
     <button data-menu="track">Track</button>
     <div class="dropdown">
       <button data-act="track-new">New Track (circle)</button>
-      <button data-act="track-load">Load Track&hellip;</button>
-      <button data-act="track-save">Download Track</button>
-      <button data-act="track-export-lua">Export to Lua</button>
+      <button data-act="track-export-lua">Export to Lua snippet</button>
       <hr>
       <button data-act="track-clear">Clear Checkpoints</button>
+      <hr>
+      <button data-act="track-load-legacy">Import legacy .track&hellip;</button>
+      <button data-act="track-save-legacy">Export legacy .track</button>
     </div>
   </div>
   <div class="spacer"></div>
@@ -180,7 +180,7 @@
 <footer id="status">Ready. Open a heightmap PNG, pick a preset map, or generate one.</footer>
 
 <input id="fileOpen" type="file" accept=".png" hidden>
-<input id="fileOpenJson" type="file" accept=".json" hidden multiple>
+<input id="fileOpenLevel" type="file" accept=".json" hidden>
 <input id="fileOpenTrack" type="file" accept=".track,.txt" hidden>
 
 <dialog id="newMapDialog">

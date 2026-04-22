@@ -8,6 +8,7 @@ import { Terrain2D } from './terrain2d.js';
 import { Terrain3D } from './terrain3d.js';
 import { generate } from './generator.js';
 import { TILESETS, MAPS, MISSIONS, makeTerrainFromTileset } from './maps.js';
+import { buildLevelJson, parseLevelJson } from './level.js';
 import {
   HAS_FS, downloadBlob, saveBlob, writeToHandle, pickPng,
   listSnapshots, saveSnapshot, deleteSnapshot,
@@ -21,9 +22,10 @@ const state = {
   track: new Track(),
   terrain: makeTerrainFromTileset(0),
   tilesetIdx: 0,
-  filePath: '',
-  pngHandle: null,
-  jsonHandle: null,
+  filePath: '',           // base name without extension
+  pngHandle: null,        // FS Access handle for the heightmap PNG
+  jsonHandle: null,       // FS Access handle for the unified level JSON
+  mapMeta: null,          // extra Map fields preserved across save/load
   gameRoot: localStorage.getItem('webTE.gameRoot') || autoDetectGameRoot(),
   selectedHeight: 1,
 };
@@ -84,12 +86,11 @@ document.querySelectorAll('#menubar .dropdown button').forEach(b => {
 function menuAction(act) {
   switch (act) {
     case 'new': openNewDialog(); break;
+    case 'open-level': openLevel(); break;
     case 'open': openPng(); break;
-    case 'open-bundle': openBundle(); break;
-    case 'save': saveAll(); break;
-    case 'save-as': saveAs(); break;
+    case 'save-level': saveLevel(); break;
+    case 'save-level-as': saveLevelAs(); break;
     case 'save-png': downloadPng(); break;
-    case 'save-json': downloadJson(); break;
     case 'set-game-root': showGameRootDialog(); break;
     case 'undo': performUndo(); break;
     case 'redo': performRedo(); break;
@@ -101,8 +102,8 @@ function menuAction(act) {
     case 'gen-plateau':   showGenerate('plateau'); break;
     case 'gen-mountains': showGenerate('mountains'); break;
     case 'track-new': newTrack(); break;
-    case 'track-load': $('fileOpenTrack').click(); break;
-    case 'track-save': downloadTrack(); break;
+    case 'track-load-legacy': $('fileOpenTrack').click(); break;
+    case 'track-save-legacy': downloadTrack(); break;
     case 'track-export-lua': exportTrackLua(); break;
     case 'track-clear': state.track.checkpoints.length = 0; refreshTrackUI(); view2d.draw(); view3d.markDirty(); break;
   }
@@ -463,90 +464,133 @@ fileOpen.onchange = async e => {
   e.target.value = '';
 };
 async function openPng() { fileOpen.click(); }
-async function openBundle() {
-  $('fileOpenJson').click();
-}
-$('fileOpenJson').onchange = async e => {
-  // Accept multiple files; treat the .png + .json pair.
-  const files = [...e.target.files];
-  const png = files.find(f => f.name.toLowerCase().endsWith('.png'));
-  const json = files.find(f => f.name.toLowerCase().endsWith('.json'));
-  if (png) await loadHeightmapFile(png);
-  if (json) await loadMarkerJson(json);
+
+// ── Open Level (unified JSON) ─────────────────────────────────────────────
+async function openLevel() { $('fileOpenLevel').click(); }
+$('fileOpenLevel').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  await loadLevelFile(f);
   e.target.value = '';
 };
+async function loadLevelFile(f) {
+  let text;
+  try { text = await f.text(); }
+  catch (e) { status('Cannot read file: ' + e.message); return; }
+  let parsed;
+  try { parsed = parseLevelJson(text); }
+  catch (e) { status('Invalid JSON: ' + e.message); return; }
 
+  // Pull the heightmap PNG referenced by Map.image.
+  const candidates = uniqueRoots(state.gameRoot, './').map(r => r + parsed.map.image)
+    .concat(['./samples/racing/' + parsed.map.image.split('/').pop()]);
+  let png = null;
+  for (const u of candidates) {
+    try { const r = await fetch(u); if (r.ok) { png = await r.blob(); break; } }
+    catch { /* keep trying */ }
+  }
+  if (!png) {
+    status(`Loaded JSON but could not fetch ${parsed.map.image}. Use File > Open PNG only to load the heightmap, or Set Game Root URL.`);
+    return;
+  }
+
+  state.heightmap = await Heightmap.fromPng(png);
+  state.heightmap.filePath = parsed.map.image.split('/').pop();
+  state.filePath = (f.name || parsed.map.image.split('/').pop()).replace(/\.json$/i, '');
+  state.markers = parsed.markers;
+  state.track   = parsed.track;
+  state.mapMeta = parsed.map;
+
+  view2d.setHeightmap(state.heightmap, state.terrain);
+  view2d.setMarkers(state.markers);
+  view2d.setTrack(state.track);
+  view3d.setHeightmap(state.heightmap, state.terrain);
+  view3d.setMarkers(state.markers);
+  view3d.setTrack(state.track);
+  $('dualContour').checked = !!state.markers.dualContour;
+  $('nightMode').checked = !!state.markers.nightMode;
+  refreshMarkerUI();
+  refreshTrackUI();
+  status(`Loaded level "${parsed.map.name}" — ${state.track.checkpoints.length} checkpoints, ${state.markers.markers.length} markers.`);
+  updateTitle();
+}
+
+// ── Open PNG only (legacy heightmap-only mode) ───────────────────────────
 async function loadHeightmapFile(f) {
   try {
     state.heightmap = await Heightmap.fromPng(f);
     state.heightmap.filePath = f.name;
-    state.filePath = f.name;
+    state.filePath = f.name.replace(/\.png$/i, '');
     state.markers = new MarkerSet();
+    state.track = new Track();
+    state.mapMeta = null;
     view2d.setHeightmap(state.heightmap, state.terrain);
     view2d.setMarkers(state.markers);
+    view2d.setTrack(state.track);
     view3d.setHeightmap(state.heightmap, state.terrain);
     view3d.setMarkers(state.markers);
+    view3d.setTrack(state.track);
     refreshMarkerUI();
+    refreshTrackUI();
     $('dualContour').checked = false;
     $('nightMode').checked = false;
-    status(`Loaded ${f.name} (${state.heightmap.width}x${state.heightmap.height}). Open the .json sidecar separately if needed.`);
+    status(`Loaded PNG ${f.name} (${state.heightmap.width}x${state.heightmap.height}). Use File > Save Level to export a unified JSON.`);
     updateTitle();
   } catch (e) {
     status('Failed to load PNG: ' + e.message);
   }
 }
-async function loadMarkerJson(f) {
-  const text = await f.text();
-  state.markers = MarkerSet.fromJsonString(text);
-  view2d.setMarkers(state.markers);
-  view3d.setMarkers(state.markers);
-  $('dualContour').checked = !!state.markers.dualContour;
-  $('nightMode').checked = !!state.markers.nightMode;
-  refreshMarkerUI();
-  status(`Loaded markers JSON: ${state.markers.markers.length} entries.`);
+
+// ── Save Level (unified JSON + PNG) ──────────────────────────────────────
+function currentLevelJson() {
+  return buildLevelJson({
+    heightmap: state.heightmap,
+    markers:   state.markers,
+    track:     state.track,
+    terrain:   state.terrain,
+    mapMeta:   {
+      ...(state.mapMeta || {}),
+      name:     state.mapMeta?.name || (state.track.name || state.filePath || 'Untitled'),
+      basename: state.filePath || 'untitled',
+      image:    state.mapMeta?.image || `assets/racing_maps/${state.filePath || 'untitled'}.png`,
+    },
+  });
 }
 
-async function saveAll() {
+async function saveLevel() {
   if (!state.heightmap) return;
-  if (HAS_FS && state.pngHandle) {
-    const blob = await state.heightmap.toPngBlob();
-    await writeToHandle(state.pngHandle, blob);
-    if (state.jsonHandle) {
-      const jblob = new Blob([state.markers.toJsonString()], { type: 'application/json' });
-      await writeToHandle(state.jsonHandle, jblob);
-    }
+  if (HAS_FS && state.jsonHandle && state.pngHandle) {
+    const png = await state.heightmap.toPngBlob();
+    const json = new Blob([currentLevelJson()], { type: 'application/json' });
+    await writeToHandle(state.pngHandle, png);
+    await writeToHandle(state.jsonHandle, json);
     state.heightmap.dirty = false;
-    status('Saved.');
+    status('Saved level.');
     updateTitle();
   } else {
-    await saveAs();
+    await saveLevelAs();
   }
 }
-async function saveAs() {
+async function saveLevelAs() {
   if (!state.heightmap) return;
-  const pngBlob = await state.heightmap.toPngBlob();
-  const baseName = (state.filePath || 'heightmap.png').replace(/\.png$/i, '');
-  const handle = await saveBlob(pngBlob, baseName + '.png',
-    [{ description: 'Heightmap PNG', accept: { 'image/png': ['.png'] } }]);
-  if (handle) state.pngHandle = handle;
+  const base = state.filePath || 'untitled';
+  const json = new Blob([currentLevelJson()], { type: 'application/json' });
+  const jh = await saveBlob(json, base + '.json',
+    [{ description: 'Racing Level JSON', accept: { 'application/json': ['.json'] } }]);
+  if (jh) state.jsonHandle = jh;
 
-  const jsonBlob = new Blob([state.markers.toJsonString()], { type: 'application/json' });
-  const jHandle = await saveBlob(jsonBlob, baseName + '.json',
-    [{ description: 'Markers JSON', accept: { 'application/json': ['.json'] } }]);
-  if (jHandle) state.jsonHandle = jHandle;
+  const png = await state.heightmap.toPngBlob();
+  const ph = await saveBlob(png, base + '.png',
+    [{ description: 'Heightmap PNG', accept: { 'image/png': ['.png'] } }]);
+  if (ph) state.pngHandle = ph;
+
   state.heightmap.dirty = false;
-  status('Saved.');
+  status('Saved level (JSON + PNG).');
   updateTitle();
 }
 async function downloadPng() {
   if (!state.heightmap) return;
   const b = await state.heightmap.toPngBlob();
-  downloadBlob(b, (state.filePath || 'heightmap.png').replace(/\.png$/i, '') + '.png');
-}
-function downloadJson() {
-  if (!state.heightmap) return;
-  const b = new Blob([state.markers.toJsonString()], { type: 'application/json' });
-  downloadBlob(b, (state.filePath || 'heightmap').replace(/\.png$/i, '') + '.json');
+  downloadBlob(b, (state.filePath || 'heightmap') + '.png');
 }
 
 async function loadMapPreset(idx) {
@@ -799,7 +843,7 @@ window.addEventListener('keydown', e => {
     e.preventDefault(); return;
   }
   if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) { performRedo(); e.preventDefault(); return; }
-  if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) { saveAll(); e.preventDefault(); return; }
+  if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) { saveLevel(); e.preventDefault(); return; }
   if ((e.ctrlKey || e.metaKey) && (e.key === 'o' || e.key === 'O')) { openPng(); e.preventDefault(); return; }
   if ((e.ctrlKey || e.metaKey) && (e.key === 'n' || e.key === 'N')) { openNewDialog(); e.preventDefault(); return; }
   if (inField) return;
