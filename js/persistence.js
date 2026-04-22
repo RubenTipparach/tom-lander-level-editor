@@ -65,3 +65,17 @@ export function deleteSnapshot(name) {
   delete all[name];
   localStorage.setItem(SNAP_KEY, JSON.stringify(all));
 }
+// Rename a stored snapshot. Returns true on success, false if oldName is
+// missing or newName is empty / already taken.
+export function renameSnapshot(oldName, newName) {
+  if (!newName || typeof newName !== 'string') return false;
+  newName = newName.trim();
+  if (!newName || newName === oldName) return false;
+  const all = listSnapshots();
+  if (!all[oldName]) return false;
+  if (all[newName]) return false;
+  all[newName] = all[oldName];
+  delete all[oldName];
+  localStorage.setItem(SNAP_KEY, JSON.stringify(all));
+  return true;
+}

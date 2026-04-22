@@ -15,7 +15,7 @@ import {
 } from './library.js';
 import {
   HAS_FS, downloadBlob, saveBlob, writeToHandle, pickPng,
-  listSnapshots, saveSnapshot, deleteSnapshot,
+  listSnapshots, saveSnapshot, deleteSnapshot, renameSnapshot,
 } from './persistence.js';
 
 // ───── State ─────
@@ -147,6 +147,36 @@ function buildMapsMenu() {
         flyoutWrap.classList.remove('open');
       };
       row.appendChild(load);
+
+      const rename = document.createElement('button');
+      rename.className = 'flyout-rename';
+      rename.title = 'Rename';
+      rename.textContent = '\u270E';  // ✎ pencil
+      rename.onclick = (e) => {
+        e.stopPropagation();
+        const next = prompt(`Rename "${name}" to:`, name);
+        if (next == null) return;                  // user cancelled
+        const trimmed = next.trim();
+        if (!trimmed || trimmed === name) return;  // no-op
+        if (listSnapshots()[trimmed]) {
+          alert(`A local map named "${trimmed}" already exists.`);
+          return;
+        }
+        if (!renameSnapshot(name, trimmed)) {
+          alert(`Could not rename "${name}".`);
+          return;
+        }
+        // If the currently-open file matches, update its display name too.
+        if (state.filePath === name) {
+          state.filePath = trimmed;
+          updateTitle();
+        }
+        status(`Renamed local map "${name}" → "${trimmed}".`);
+        buildMapsMenu();
+        document.querySelector('#menubar .menu:has(#mapsDropdown)')?.classList.add('open');
+        flyoutWrap.classList.add('open');
+      };
+      row.appendChild(rename);
 
       const del = document.createElement('button');
       del.className = 'flyout-del';
@@ -1387,6 +1417,35 @@ function updateTitle() {
   $('title').textContent = name + (dirty ? ' *' : '');
   document.title = `Tom Lander Web Terrain Editor - ${name}${dirty ? ' *' : ''}`;
 }
+
+// Click the title in the menubar to rename the current map. If the current
+// name matches a local-library entry, the localStorage entry is renamed too.
+$('title').classList.add('clickable-title');
+$('title').title = 'Click to rename';
+$('title').addEventListener('click', () => {
+  const current = state.filePath || '';
+  const next = prompt('Rename map to:', current || 'untitled');
+  if (next == null) return;                         // cancelled
+  const trimmed = next.trim();
+  if (!trimmed || trimmed === current) return;      // no-op
+
+  // If there's a saved local map under the OLD name, rename the localStorage
+  // entry. If a different local map already has the NEW name, refuse.
+  const snaps = listSnapshots();
+  if (snaps[trimmed] && trimmed !== current) {
+    alert(`A local map named "${trimmed}" already exists.`);
+    return;
+  }
+  if (current && snaps[current]) {
+    renameSnapshot(current, trimmed);
+    buildMapsMenu();  // refresh the Local Maps flyout
+    status(`Renamed local map "${current}" → "${trimmed}".`);
+  } else {
+    status(`Renamed to "${trimmed}". Save to a local map to persist.`);
+  }
+  state.filePath = trimmed;
+  updateTitle();
+});
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 function stripExt(s) { return (s || '').replace(/\.(png|json)$/i, ''); }
 

@@ -58,7 +58,6 @@ export function buildLevelJson({ heightmap, markers, track, terrain, mapMeta }) 
       altitude_limit: mapMeta?.altitude_limit ?? null,
       altitude_warning_time: mapMeta?.altitude_warning_time ?? null,
       clamp_edges:    mapMeta?.clamp_edges ?? null,
-      image:          mapMeta?.image ?? null,  // optional legacy sidecar path
     },
     Track: {
       name:        track?.name ?? mapMeta?.name ?? 'Untitled Track',
