@@ -158,20 +158,19 @@ function buildMapsMenu() {
         if (next == null) return;                  // user cancelled
         const trimmed = next.trim();
         if (!trimmed || trimmed === name) return;  // no-op
-        if (listSnapshots()[trimmed]) {
-          alert(`A local map named "${trimmed}" already exists.`);
-          return;
-        }
-        if (!renameSnapshot(name, trimmed)) {
+        // Auto-suffix on collision instead of refusing.
+        const target = uniqueSnapshotName(trimmed, name);
+        if (!renameSnapshot(name, target)) {
           alert(`Could not rename "${name}".`);
           return;
         }
-        // If the currently-open file matches, update its display name too.
         if (state.filePath === name) {
-          state.filePath = trimmed;
+          state.filePath = target;
           updateTitle();
         }
-        status(`Renamed local map "${name}" → "${trimmed}".`);
+        status(target === trimmed
+          ? `Renamed local map "${name}" → "${target}".`
+          : `Renamed to "${target}" ("${trimmed}" already existed).`);
         buildMapsMenu();
         document.querySelector('#menubar .menu:has(#mapsDropdown)')?.classList.add('open');
         flyoutWrap.classList.add('open');
@@ -205,16 +204,13 @@ function buildMapsMenu() {
   saveBtn.onclick = (e) => {
     e.stopPropagation();
     if (!state.heightmap) { alert('Load or generate a heightmap first.'); return; }
-    const name = prompt('Name for this local map:',
-      state.filePath || `map-${new Date().toISOString().slice(0,10)}`);
-    if (!name) return;
+    const name = uniqueSnapshotName(state.filePath || 'untitled');
     saveSnapshot(name, snapshotPayload());
     state.filePath = name;
     clearDirty();
-    status(`Saved local map "${name}".`);
     buildMapsMenu();
-    document.querySelector('#menubar .menu:has(#mapsDropdown)')?.classList.add('open');
-    flyoutWrap.classList.add('open');
+    openLocalMapsFlyout();
+    status(`Saved local map "${name}".`);
   };
   flyoutPanel.appendChild(saveBtn);
 
@@ -1062,14 +1058,42 @@ $('genOk').onclick = e => {
 
 // ───── Snapshots (named state checkpoints in localStorage) ─────
 
+// Small helper: pop open the Maps → Local Maps flyout so a freshly-saved
+// entry is immediately visible to the user.
+function openLocalMapsFlyout() {
+  const mapsMenu = document.querySelector('#menubar .menu:has(#mapsDropdown)');
+  if (mapsMenu) mapsMenu.classList.add('open');
+  const fly = document.querySelector('#mapsDropdown .flyout');
+  if (fly) fly.classList.add('open');
+}
+
+// Return a snapshot name guaranteed not to collide with an existing entry.
+// "map" → "map" if free, else "map (1)", "map (2)", ... The `exclude` arg is
+// the name being renamed; it's allowed to match itself (no-op rename).
+function uniqueSnapshotName(base, exclude) {
+  const snaps = listSnapshots();
+  const trimmed = (base || 'untitled').trim() || 'untitled';
+  // Strip a trailing " (N)" so re-saving doesn't cascade to " (1) (1)".
+  const root = trimmed.replace(/\s*\(\d+\)\s*$/, '');
+  if (!snaps[trimmed] || trimmed === exclude) return trimmed;
+  if (!snaps[root] || root === exclude) return root;
+  for (let n = 1; n < 10000; n++) {
+    const candidate = `${root} (${n})`;
+    if (!snaps[candidate] || candidate === exclude) return candidate;
+  }
+  return `${root} (${Date.now()})`;
+}
+
 function quickSnapshot() {
   if (!state.heightmap) return;
-  const name = prompt('Snapshot name:', `snap-${new Date().toISOString().replace(/[-:]/g,'').slice(0,15)}`);
-  if (!name) return;
+  const base = state.filePath || 'untitled';
+  const name = uniqueSnapshotName(base);
   saveSnapshot(name, snapshotPayload());
+  state.filePath = name;
   clearDirty();
   buildMapsMenu();
-  status(`Snapshot "${name}" saved (browser localStorage).`);
+  openLocalMapsFlyout();
+  status(`Saved local map "${name}".`);
 }
 function snapshotPayload() {
   pushAltitudeIntoMapMeta();
@@ -1142,7 +1166,9 @@ $('snapSaveBtn').onclick = () => {
   buildMapsMenu();
   $('snapName').value = '';
   refreshSnapshotList();
-  status(`Snapshot "${name}" saved.`);
+  snapDlg.close();          // close the legacy dialog
+  openLocalMapsFlyout();    // reveal the new entry in the flyout
+  status(`Saved local map "${name}".`);
 };
 function refreshSnapshotList() {
   const ul = $('snapList');
@@ -1429,21 +1455,19 @@ $('title').addEventListener('click', () => {
   const trimmed = next.trim();
   if (!trimmed || trimmed === current) return;      // no-op
 
-  // If there's a saved local map under the OLD name, rename the localStorage
-  // entry. If a different local map already has the NEW name, refuse.
+  // Auto-suffix on collision so "Canyon Run" → "Canyon Run (1)" when needed.
+  const target = uniqueSnapshotName(trimmed, current);
   const snaps = listSnapshots();
-  if (snaps[trimmed] && trimmed !== current) {
-    alert(`A local map named "${trimmed}" already exists.`);
-    return;
-  }
   if (current && snaps[current]) {
-    renameSnapshot(current, trimmed);
+    renameSnapshot(current, target);
     buildMapsMenu();  // refresh the Local Maps flyout
-    status(`Renamed local map "${current}" → "${trimmed}".`);
+    status(target === trimmed
+      ? `Renamed local map "${current}" → "${target}".`
+      : `Renamed to "${target}" ("${trimmed}" already existed).`);
   } else {
-    status(`Renamed to "${trimmed}". Save to a local map to persist.`);
+    status(`Renamed to "${target}". Save to persist as a local map.`);
   }
-  state.filePath = trimmed;
+  state.filePath = target;
   updateTitle();
 });
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
