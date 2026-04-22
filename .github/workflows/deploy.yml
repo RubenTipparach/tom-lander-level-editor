@@ -2,57 +2,48 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: ['**']
+    branches: [main]
   workflow_dispatch:
 
+# Allow only one in-flight Pages deploy at a time; cancel older queued runs.
 concurrency:
-  group: pages-${{ github.ref }}
+  group: pages
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Stage site
-        id: stage
         run: |
           mkdir -p _site
-          # Copy static site files (exclude repo/workflow artifacts)
-          rsync -a --exclude='.git' --exclude='.github' --exclude='_site' --exclude='web-run.bat' ./ _site/
+          rsync -a \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='_site' \
+            --exclude='web-run.bat' \
+            --exclude='tools' \
+            ./ _site/
 
-          BRANCH="${GITHUB_REF_NAME}"
-          SAFE_BRANCH="${BRANCH//\//-}"
-          echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
-          echo "safe_branch=${SAFE_BRANCH}" >> "$GITHUB_OUTPUT"
-          if [ "${BRANCH}" = "main" ]; then
-            echo "dest=." >> "$GITHUB_OUTPUT"
-          else
-            echo "dest=branches/${SAFE_BRANCH}" >> "$GITHUB_OUTPUT"
-          fi
+      - uses: actions/configure-pages@v5
 
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
+      - uses: actions/upload-pages-artifact@v3
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./_site
-          publish_branch: gh-pages
-          destination_dir: ${{ steps.stage.outputs.dest }}
-          keep_files: true
-          commit_message: "deploy ${{ steps.stage.outputs.branch }} @ ${{ github.sha }}"
+          path: ./_site
 
-      - name: Summary
-        run: |
-          OWNER_REPO="${GITHUB_REPOSITORY}"
-          OWNER="${OWNER_REPO%%/*}"
-          REPO="${OWNER_REPO##*/}"
-          if [ "${{ steps.stage.outputs.branch }}" = "main" ]; then
-            URL="https://${OWNER}.github.io/${REPO}/"
-          else
-            URL="https://${OWNER}.github.io/${REPO}/branches/${{ steps.stage.outputs.safe_branch }}/"
-          fi
-          echo "Deployed ${{ steps.stage.outputs.branch }} to ${URL}" >> "$GITHUB_STEP_SUMMARY"
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
