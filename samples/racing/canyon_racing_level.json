@@ -1,0 +1,143 @@
+{
+  "Map": {
+    "name": "Canyon Sprint",
+    "image": "assets/racing_maps/canyon_racing_level.png",
+    "width": 128,
+    "height": 256,
+    "has_water": false,
+    "has_grass": false,
+    "spawn_aseprite": [
+      64,
+      224
+    ],
+    "terrain": {
+      "ground_to_mid": 8,
+      "mid_to_high": 27,
+      "ground_mid_blend": 2.0,
+      "mid_high_blend": 3.0
+    }
+  },
+  "Track": {
+    "name": "Canyon Sprint",
+    "laps": 2,
+    "width": 10,
+    "checkpoints": [
+      {
+        "x": 64,
+        "z": 220,
+        "y": 8,
+        "time": 30,
+        "name": "CP 1"
+      },
+      {
+        "x": 60,
+        "z": 190,
+        "y": 8,
+        "time": 30,
+        "name": "CP 2"
+      },
+      {
+        "x": 66,
+        "z": 160,
+        "y": 8,
+        "time": 30,
+        "name": "CP 3"
+      },
+      {
+        "x": 62,
+        "z": 130,
+        "y": 8,
+        "time": 30,
+        "name": "CP 4"
+      },
+      {
+        "x": 68,
+        "z": 100,
+        "y": 8,
+        "time": 30,
+        "name": "CP 5"
+      },
+      {
+        "x": 60,
+        "z": 70,
+        "y": 8,
+        "time": 30,
+        "name": "CP 6"
+      },
+      {
+        "x": 66,
+        "z": 40,
+        "y": 8,
+        "time": 30,
+        "name": "CP 7"
+      },
+      {
+        "x": 64,
+        "z": 18,
+        "y": 8,
+        "time": 30,
+        "name": "CP 8"
+      },
+      {
+        "x": 66,
+        "z": 40,
+        "y": 8,
+        "time": 30,
+        "name": "CP 9"
+      },
+      {
+        "x": 60,
+        "z": 70,
+        "y": 8,
+        "time": 30,
+        "name": "CP 10"
+      },
+      {
+        "x": 68,
+        "z": 100,
+        "y": 8,
+        "time": 30,
+        "name": "CP 11"
+      },
+      {
+        "x": 62,
+        "z": 130,
+        "y": 8,
+        "time": 30,
+        "name": "CP 12"
+      },
+      {
+        "x": 66,
+        "z": 160,
+        "y": 8,
+        "time": 30,
+        "name": "CP 13"
+      },
+      {
+        "x": 60,
+        "z": 190,
+        "y": 8,
+        "time": 30,
+        "name": "CP 14"
+      }
+    ]
+  },
+  "Markers": [
+    {
+      "X": 64,
+      "Z": 220,
+      "HeightOffset": 0,
+      "Name": "Start",
+      "Group": "A"
+    },
+    {
+      "X": 64,
+      "Z": 18,
+      "HeightOffset": 0,
+      "Name": "Apex",
+      "Group": "D"
+    }
+  ],
+  "DualContour": false,
+  "NightMode": false
+}

@@ -1,0 +1,103 @@
+{
+  "Map": {
+    "name": "Island Racing",
+    "image": "assets/racing_maps/island_racing_level.png",
+    "width": 128,
+    "height": 128,
+    "has_water": true,
+    "has_grass": true,
+    "spawn_aseprite": [
+      105,
+      61
+    ],
+    "terrain": null
+  },
+  "Track": {
+    "name": "Island Racing",
+    "laps": 3,
+    "width": 8,
+    "checkpoints": [
+      {
+        "x": 105,
+        "z": 64,
+        "y": 8,
+        "time": 30,
+        "name": "CP 1"
+      },
+      {
+        "x": 94,
+        "z": 97,
+        "y": 8,
+        "time": 30,
+        "name": "CP 2"
+      },
+      {
+        "x": 64,
+        "z": 108,
+        "y": 8,
+        "time": 30,
+        "name": "CP 3"
+      },
+      {
+        "x": 34,
+        "z": 94,
+        "y": 8,
+        "time": 30,
+        "name": "CP 4"
+      },
+      {
+        "x": 19,
+        "z": 64,
+        "y": 8,
+        "time": 30,
+        "name": "CP 5"
+      },
+      {
+        "x": 31,
+        "z": 30,
+        "y": 8,
+        "time": 30,
+        "name": "CP 6"
+      },
+      {
+        "x": 64,
+        "z": 19,
+        "y": 8,
+        "time": 30,
+        "name": "CP 7"
+      },
+      {
+        "x": 92,
+        "z": 32,
+        "y": 8,
+        "time": 30,
+        "name": "CP 8"
+      }
+    ]
+  },
+  "Markers": [
+    {
+      "X": 64,
+      "Z": 30,
+      "HeightOffset": 0,
+      "Name": "Start Pad",
+      "Group": "A"
+    },
+    {
+      "X": 96,
+      "Z": 64,
+      "HeightOffset": 0,
+      "Name": "Pit Stop",
+      "Group": "B"
+    },
+    {
+      "X": 32,
+      "Z": 64,
+      "HeightOffset": 0,
+      "Name": "Pit Stop",
+      "Group": "B"
+    }
+  ],
+  "DualContour": false,
+  "NightMode": false
+}

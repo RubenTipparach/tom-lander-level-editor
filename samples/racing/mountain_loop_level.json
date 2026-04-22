@@ -1,0 +1,103 @@
+{
+  "Map": {
+    "name": "Mountain Loop",
+    "image": "assets/racing_maps/mountain_loop_level.png",
+    "width": 128,
+    "height": 128,
+    "has_water": false,
+    "has_grass": true,
+    "spawn_aseprite": [
+      64,
+      61
+    ],
+    "terrain": null
+  },
+  "Track": {
+    "name": "Mountain Loop",
+    "laps": 2,
+    "width": 7,
+    "checkpoints": [
+      {
+        "x": 64,
+        "z": 64,
+        "y": 8,
+        "time": 30,
+        "name": "CP 1"
+      },
+      {
+        "x": 87,
+        "z": 91,
+        "y": 8,
+        "time": 30,
+        "name": "CP 2"
+      },
+      {
+        "x": 101,
+        "z": 81,
+        "y": 8,
+        "time": 30,
+        "name": "CP 3"
+      },
+      {
+        "x": 101,
+        "z": 47,
+        "y": 8,
+        "time": 30,
+        "name": "CP 4"
+      },
+      {
+        "x": 87,
+        "z": 37,
+        "y": 8,
+        "time": 30,
+        "name": "CP 5"
+      },
+      {
+        "x": 64,
+        "z": 64,
+        "y": 8,
+        "time": 30,
+        "name": "CP 6"
+      },
+      {
+        "x": 41,
+        "z": 91,
+        "y": 8,
+        "time": 30,
+        "name": "CP 7"
+      },
+      {
+        "x": 27,
+        "z": 81,
+        "y": 8,
+        "time": 30,
+        "name": "CP 8"
+      },
+      {
+        "x": 27,
+        "z": 47,
+        "y": 8,
+        "time": 30,
+        "name": "CP 9"
+      },
+      {
+        "x": 41,
+        "z": 37,
+        "y": 8,
+        "time": 30,
+        "name": "CP 10"
+      }
+    ]
+  },
+  "Markers": [
+    {
+      "X": 64,
+      "Z": 64,
+      "HeightOffset": 0,
+      "Name": "Apex Camera",
+      "Group": "C"
+    }
+  ],
+  "DualContour": false,
+  "NightMode": false
+}
