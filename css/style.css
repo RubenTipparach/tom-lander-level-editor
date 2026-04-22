@@ -1,0 +1,181 @@
+:root {
+  --bg: #1e1e1e;
+  --bg2: #2a2a2c;
+  --bg3: #353539;
+  --fg: #e6e6e6;
+  --fg-dim: #9a9a9a;
+  --accent: #5fa3e0;
+  --danger: #c44;
+  --border: #444;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0; height: 100%;
+  background: var(--bg); color: var(--fg);
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 12px;
+  overflow: hidden;
+}
+
+button, select, input[type=text], input[type=number] {
+  background: var(--bg3); color: var(--fg);
+  border: 1px solid var(--border);
+  padding: 3px 8px; font-size: 12px; font-family: inherit;
+}
+button { cursor: pointer; }
+button:hover { background: #4a4a50; }
+button.active, button.tool.active { background: var(--accent); color: #000; }
+button.toggle.active { background: #b07e2a; color: #000; }
+button.danger { background: #5a2a2a; }
+button.danger:hover { background: #7a3535; }
+
+input[type=number] { width: 56px; }
+
+hr { border: 0; border-top: 1px solid var(--border); margin: 4px 0; }
+
+/* ───── Menubar ───── */
+#menubar {
+  display: flex; align-items: center;
+  background: #2c2c30; border-bottom: 1px solid #111;
+  height: 28px; padding: 0 6px;
+  position: relative; z-index: 100;
+}
+#menubar .menu { position: relative; }
+#menubar .menu > button {
+  background: transparent; border: 0; padding: 4px 10px;
+  color: var(--fg);
+}
+#menubar .menu > button:hover, #menubar .menu.open > button { background: #3a3a40; }
+#menubar .dropdown {
+  display: none; position: absolute; top: 100%; left: 0;
+  background: #34343a; border: 1px solid #111;
+  min-width: 180px; padding: 4px 0; box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  z-index: 200;
+}
+#menubar .menu.open .dropdown { display: block; }
+#menubar .dropdown button {
+  display: block; width: 100%; text-align: left;
+  background: transparent; border: 0; padding: 5px 14px; color: var(--fg);
+}
+#menubar .dropdown button:hover { background: var(--accent); color: #000; }
+.spacer { flex: 1; }
+#title { color: var(--fg-dim); padding: 0 8px; }
+
+/* ───── Toolbar ───── */
+#toolbar {
+  display: flex; align-items: center; gap: 4px;
+  background: var(--bg2); border-bottom: 1px solid #111;
+  padding: 4px 6px; height: 32px;
+}
+#toolbar .lbl { color: var(--fg-dim); padding: 0 2px; }
+#toolbar .sep { width: 1px; height: 18px; background: var(--border); margin: 0 4px; }
+
+/* ───── Palette ───── */
+#palette {
+  display: flex; gap: 1px; padding: 4px 6px;
+  background: #232326; border-bottom: 1px solid #111;
+  height: 36px; align-items: center;
+}
+#palette .swatch {
+  width: 26px; height: 26px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: Consolas, monospace; font-size: 9px; font-weight: 700;
+  border: 1px solid #111; cursor: pointer;
+  color: rgba(0,0,0,0.6);
+}
+#palette .swatch.dark { color: rgba(255,255,255,0.6); }
+#palette .swatch.selected { outline: 2px solid #fff; z-index: 1; }
+
+/* ───── Workspace ───── */
+#workspace {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  position: absolute;
+  top: calc(28px + 32px + 36px); /* menu + toolbar + palette */
+  left: 0; right: 0;
+  bottom: calc(160px + 18px); /* bottomPanel + status */
+}
+#leftPane, #rightPane {
+  position: relative; overflow: hidden;
+  border-right: 1px solid #111;
+  background: #181820;
+}
+#rightPane { border-right: 0; }
+#canvas2d, #canvas3d {
+  display: block; width: 100%; height: 100%;
+  cursor: crosshair;
+  image-rendering: pixelated;
+}
+#canvas3d { cursor: grab; image-rendering: auto; }
+
+/* ───── Side panels ───── */
+.side {
+  position: absolute; top: 0; right: 0; bottom: 0;
+  width: 240px; background: #2a2a30; border-left: 1px solid #111;
+  padding: 8px; overflow-y: auto;
+}
+.side.hidden { display: none; }
+.side h3 { margin: 0 0 8px 0; font-size: 13px; color: #b9d6ff; font-weight: 600; }
+.side label { display: flex; flex-direction: column; gap: 2px; margin: 4px 0; color: var(--fg-dim); font-size: 11px; }
+.side label input, .side label select { font-size: 12px; padding: 3px 6px; width: 100%; }
+.side .row { display: flex; gap: 4px; margin-top: 6px; }
+.side .row button { flex: 1; }
+.side .hint { color: var(--fg-dim); font-size: 10px; margin: 6px 0; line-height: 1.4; }
+.side ul { list-style: none; padding: 0; margin: 6px 0;
+  background: #1f1f24; border: 1px solid #111; max-height: 240px; overflow-y: auto;
+  font-family: Consolas, monospace; font-size: 11px;
+}
+.side ul li {
+  padding: 3px 6px; cursor: pointer; border-bottom: 1px solid #2a2a2e;
+}
+.side ul li.selected { background: var(--accent); color: #000; }
+.side ul li:hover { background: #3a3a40; }
+.side fieldset { border: 1px solid #2a2a30; margin: 6px 0; padding: 6px; }
+.side fieldset legend { color: #b8b8c0; padding: 0 4px; font-size: 11px; }
+
+/* ───── Bottom panel ───── */
+#bottomPanel {
+  position: absolute; bottom: 18px; left: 0; right: 0;
+  height: 160px; background: #232326; border-top: 1px solid #111;
+}
+#tilesetRow {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 8px; background: #2a2a30; border-bottom: 1px solid #111;
+  height: 32px;
+}
+#tilesetRow .lbl { color: var(--fg-dim); }
+#tilesetRow .spacer { flex: 1; }
+#tilesetRow .chk { color: var(--fg); display: flex; align-items: center; gap: 4px; }
+#cursorInfo { color: var(--fg); font-family: Consolas, monospace; font-size: 11px; }
+#texturesRow {
+  display: flex; gap: 24px; padding: 12px 16px;
+}
+.texSlot { display: flex; align-items: center; gap: 8px; }
+.texLbl { color: var(--fg-dim); width: 42px; }
+.texPreview {
+  width: 64px; height: 64px;
+  border: 1px solid #111;
+  image-rendering: pixelated;
+  background: #111;
+}
+.texRange { color: var(--fg); font-family: Consolas, monospace; font-size: 11px; }
+
+/* ───── Status bar ───── */
+#status {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  height: 18px; line-height: 18px;
+  background: #181820; border-top: 1px solid #111;
+  color: var(--fg-dim); padding: 0 8px; font-size: 11px;
+}
+
+/* ───── Dialogs ───── */
+dialog {
+  background: #2a2a30; color: var(--fg); border: 1px solid #111;
+  padding: 16px; min-width: 320px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+}
+dialog::backdrop { background: rgba(0,0,0,0.4); }
+dialog h3 { margin: 0 0 12px 0; }
+dialog label { display: flex; flex-direction: column; gap: 2px; margin: 6px 0; color: var(--fg-dim); font-size: 11px; }
+dialog menu { display: flex; gap: 8px; justify-content: flex-end; padding: 8px 0 0; margin: 8px 0 0; border: 0; }
+dialog .hint { color: var(--fg-dim); font-size: 11px; line-height: 1.5; }

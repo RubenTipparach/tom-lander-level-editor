@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tom Lander Web Terrain Editor</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header id="menubar">
+  <div class="menu">
+    <button data-menu="file">File</button>
+    <div class="dropdown">
+      <button data-act="new">New&hellip;</button>
+      <button data-act="open">Open PNG&hellip;</button>
+      <button data-act="open-bundle">Open Folder (PNG + JSON)</button>
+      <hr>
+      <button data-act="save">Save</button>
+      <button data-act="save-as">Save As&hellip;</button>
+      <button data-act="save-png">Download Heightmap PNG</button>
+      <button data-act="save-json">Download Markers JSON</button>
+      <hr>
+      <button data-act="set-game-root">Set Game Root URL&hellip;</button>
+    </div>
+  </div>
+  <div class="menu">
+    <button data-menu="edit">Edit</button>
+    <div class="dropdown">
+      <button data-act="undo">Undo  Ctrl+Z</button>
+      <button data-act="redo">Redo  Ctrl+Y</button>
+      <hr>
+      <button data-act="snapshot-save">Save Snapshot</button>
+      <button data-act="snapshot-manage">Manage Snapshots&hellip;</button>
+    </div>
+  </div>
+  <div class="menu">
+    <button data-menu="maps">Maps</button>
+    <div class="dropdown" id="mapsDropdown"></div>
+  </div>
+  <div class="menu">
+    <button data-menu="generate">Generate</button>
+    <div class="dropdown">
+      <button data-act="gen-island">Island</button>
+      <button data-act="gen-canyon">Desert Canyon</button>
+      <button data-act="gen-hills">Rolling Hills</button>
+      <button data-act="gen-plateau">Plateau</button>
+      <button data-act="gen-mountains">Mountains</button>
+    </div>
+  </div>
+  <div class="menu">
+    <button data-menu="track">Track</button>
+    <div class="dropdown">
+      <button data-act="track-new">New Track (circle)</button>
+      <button data-act="track-load">Load Track&hellip;</button>
+      <button data-act="track-save">Download Track</button>
+      <button data-act="track-export-lua">Export to Lua</button>
+      <hr>
+      <button data-act="track-clear">Clear Checkpoints</button>
+    </div>
+  </div>
+  <div class="spacer"></div>
+  <div id="title">untitled</div>
+</header>
+
+<div id="toolbar">
+  <span class="lbl">Height</span>
+  <input id="brushHeight" type="number" min="0" max="31" value="1" step="1">
+  <span class="lbl">Brush</span>
+  <button id="brushDown">-</button>
+  <input id="brushSize" type="number" min="0" max="32" value="1" step="1">
+  <button id="brushUp">+</button>
+
+  <span class="sep"></span>
+  <span class="lbl">Tools</span>
+  <button data-tool="paint" class="tool active">Paint</button>
+  <button data-tool="erase" class="tool">Erase</button>
+  <button data-tool="smooth" class="tool">Smooth</button>
+  <button data-tool="checkpoints" class="tool">Checkpoints</button>
+  <button data-tool="markers" class="tool">Markers</button>
+  <button data-tool="markers-move" class="tool">Move</button>
+
+  <span class="sep"></span>
+  <button id="toggleZones" class="toggle">Flat Zones</button>
+  <button id="toggleTextured" class="toggle">3D Textured</button>
+
+  <span class="sep"></span>
+  <button id="reset3D">Reset 3D</button>
+</div>
+
+<div id="palette"></div>
+
+<main id="workspace">
+  <section id="leftPane">
+    <canvas id="canvas2d"></canvas>
+  </section>
+  <section id="rightPane">
+    <canvas id="canvas3d"></canvas>
+  </section>
+
+  <aside id="trackPanel" class="side hidden">
+    <h3>Race Track</h3>
+    <label>Name <input id="trackName" type="text"></label>
+    <label>Laps <input id="trackLaps" type="number" min="1" max="10" value="3"></label>
+    <label>Width <input id="trackWidth" type="number" min="2" max="30" value="6"></label>
+    <ul id="cpList"></ul>
+    <div class="cp-edit">
+      <label>CP Height <input id="cpHeight" type="number" min="1" max="50" value="10"></label>
+      <label>CP Time <input id="cpTime" type="number" min="5" max="300" value="30"></label>
+      <label>CP Name <input id="cpName" type="text"></label>
+      <div class="row">
+        <button id="cpUp">Up</button>
+        <button id="cpDown">Down</button>
+        <button id="cpDelete" class="danger">Delete</button>
+      </div>
+    </div>
+    <p class="hint">Click map to add. Right-click to remove. Drag to reposition.</p>
+  </aside>
+
+  <aside id="markerPanel" class="side hidden">
+    <h3>Markers (Entities)</h3>
+    <fieldset>
+      <legend>New Marker</legend>
+      <label>Group <select id="newGroup"></select></label>
+      <label>Prefix <input id="newPrefix" type="text" value="Marker"></label>
+      <label>Height <input id="newHeight" type="number" min="0" max="100" value="0"></label>
+    </fieldset>
+    <ul id="markerList"></ul>
+    <fieldset>
+      <legend>Edit Selected</legend>
+      <label>Name <input id="markerName" type="text"></label>
+      <label>X <input id="markerX" type="number" step="1"></label>
+      <label>Z <input id="markerZ" type="number" step="1"></label>
+      <label>Height <input id="markerHeight" type="number" min="0" max="100" value="0"></label>
+      <label>Group <select id="markerGroup"></select></label>
+      <div class="row">
+        <button id="markerDelete" class="danger">Delete</button>
+        <button id="markerClear" class="danger">Clear All</button>
+      </div>
+    </fieldset>
+    <p class="hint">Click map to place. Right-click to remove. Move tool to drag.</p>
+  </aside>
+</main>
+
+<section id="bottomPanel">
+  <div id="tilesetRow">
+    <span class="lbl">Tileset</span>
+    <select id="tileset"></select>
+    <span class="lbl">Low&rarr;Mid</span>
+    <input id="lowMid" type="number" min="1" max="30" value="3">
+    <span class="lbl">Mid&rarr;High</span>
+    <input id="midHigh" type="number" min="2" max="31" value="10">
+    <label class="chk"><input id="dualContour" type="checkbox"> Dual Contour</label>
+    <label class="chk"><input id="nightMode" type="checkbox"> Night Mode</label>
+    <span class="spacer"></span>
+    <span id="cursorInfo"></span>
+  </div>
+  <div id="texturesRow">
+    <div class="texSlot">
+      <div class="texLbl">Low</div>
+      <canvas class="texPreview" id="texLow"></canvas>
+      <div class="texRange" id="lblTexLow">H: 0&ndash;?</div>
+    </div>
+    <div class="texSlot">
+      <div class="texLbl">Mid</div>
+      <canvas class="texPreview" id="texMid"></canvas>
+      <div class="texRange" id="lblTexMid">H: ?&ndash;?</div>
+    </div>
+    <div class="texSlot">
+      <div class="texLbl">High</div>
+      <canvas class="texPreview" id="texHigh"></canvas>
+      <div class="texRange" id="lblTexHigh">H: ?&ndash;31</div>
+    </div>
+    <div class="texSlot">
+      <div class="texLbl">Water</div>
+      <canvas class="texPreview" id="texWater"></canvas>
+      <div class="texRange" id="lblTexWater">idx 0</div>
+    </div>
+  </div>
+</section>
+
+<footer id="status">Ready. Open a heightmap PNG, pick a preset map, or generate one.</footer>
+
+<input id="fileOpen" type="file" accept=".png" hidden>
+<input id="fileOpenJson" type="file" accept=".json" hidden multiple>
+<input id="fileOpenTrack" type="file" accept=".track,.txt" hidden>
+
+<dialog id="newMapDialog">
+  <form method="dialog">
+    <h3>New Heightmap</h3>
+    <label>Width <input id="newMapW" type="number" min="16" max="512" value="128"></label>
+    <label>Height <input id="newMapH" type="number" min="16" max="512" value="128"></label>
+    <label>Default Height <input id="newMapDefault" type="number" min="0" max="31" value="1"></label>
+    <menu>
+      <button value="cancel">Cancel</button>
+      <button value="ok" id="newMapOk">Create</button>
+    </menu>
+  </form>
+</dialog>
+
+<dialog id="generateDialog">
+  <form method="dialog">
+    <h3 id="genTitle">Generate Terrain</h3>
+    <label>Width <input id="genW" type="number" min="16" max="512" value="128"></label>
+    <label>Height <input id="genH" type="number" min="16" max="512" value="128"></label>
+    <label>Seed <input id="genSeed" type="number" value="1"></label>
+    <label>Scale <input id="genScale" type="number" step="0.5" value="4"></label>
+    <label>Octaves <input id="genOct" type="number" min="1" max="9" value="5"></label>
+    <label>Max Height <input id="genMax" type="number" min="1" max="31" value="20"></label>
+    <menu>
+      <button value="cancel">Cancel</button>
+      <button value="ok" id="genOk">Generate</button>
+    </menu>
+  </form>
+</dialog>
+
+<dialog id="snapshotDialog">
+  <form method="dialog">
+    <h3>Snapshots</h3>
+    <p class="hint">Snapshots store a full named copy of the current heightmap, markers, and track. Stored in browser localStorage.</p>
+    <label>Save current as <input id="snapName" type="text" placeholder="snapshot name"></label>
+    <button id="snapSaveBtn" type="button">Save Snapshot</button>
+    <ul id="snapList"></ul>
+    <menu><button value="ok">Close</button></menu>
+  </form>
+</dialog>
+
+<dialog id="gameRootDialog">
+  <form method="dialog">
+    <h3>Game Root URL</h3>
+    <p class="hint">Base URL where the game's <code>assets/</code> folder is reachable. When the editor is served from the game repo at <code>utilities/WebTerrainEditor/</code>, the default <code>../../</code> is correct.</p>
+    <label>URL <input id="gameRootInput" type="text" value="../../"></label>
+    <menu>
+      <button value="cancel">Cancel</button>
+      <button value="ok" id="gameRootOk">Apply</button>
+    </menu>
+  </form>
+</dialog>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
