@@ -261,3 +261,34 @@ dialog .row label { flex: 0 0 auto; }
 .lib-list .lib-actions { display: flex; gap: 3px; }
 .lib-list button { padding: 2px 6px; font-size: 10px; }
 .lib-empty { padding: 8px; color: var(--fg-dim); font-style: italic; text-align: center; }
+
+/* Toast container + individual toasts. */
+#toastHost {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  min-width: 220px;
+  max-width: 360px;
+  padding: 10px 14px;
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  color: #1b1b1f;
+  background: #f5d76e;
+  border: 1px solid #b89324;
+  border-radius: 4px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  transform: translateX(20px);
+  transition: opacity 200ms ease, transform 200ms ease;
+}
+.toast-visible { opacity: 1; transform: translateX(0); }
+.toast-info  { background: #b9d6ff; border-color: #4f7ec0; }
+.toast-error { background: #f5a3a3; border-color: #b34040; color: #2a0000; }

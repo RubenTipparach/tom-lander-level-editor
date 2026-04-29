@@ -28,6 +28,20 @@ export const TILESETS = [
     highColor: [140, 100, 70],
     waterColor: [41, 173, 255],
   },
+  {
+    // Arctic / snow set. Game-side mapping in heightmap.lua: ice (low) -> snow (mid) -> snow_rock (high).
+    name: 'Arctic (Ice/Snow/Snowy Rock)',
+    lowToMid: 4, midToHigh: 14,
+    hasWater: true,
+    lowTex: 'assets/ice.png',
+    midTex: 'assets/snow.png',
+    highTex: 'assets/snow_rock.png',
+    waterTex: 'assets/ice.png',
+    lowColor: [200, 220, 235],
+    midColor: [240, 245, 250],
+    highColor: [180, 190, 205],
+    waterColor: [160, 200, 220],
+  },
 ];
 
 export const MAPS = [

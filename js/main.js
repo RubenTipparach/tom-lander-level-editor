@@ -902,8 +902,14 @@ async function loadLevelFile(f) {
   state.track   = parsed.track;
   state.mapMeta = parsed.map;
 
-  // Apply the tileset carried in the JSON (island/desert) so texture selection
-  // and threshold defaults match what the game will use.
+  // Apply the tileset carried in the JSON so texture selection and threshold
+  // defaults match what the game will use. If the JSON named a tileset we
+  // don't recognize, fall through to the default (island, idx 0) and toast
+  // the user instead of silently swapping textures on them.
+  if (parsed.tilesetWarning) {
+    console.warn(`[level-editor] Unknown tileset "${parsed.tilesetWarning}" in JSON. Falling back to "island".`);
+    showToast(`Tileset "${parsed.tilesetWarning}" not found. Using default (island).`, 'warn');
+  }
   if (parsed.tilesetIdx != null) {
     await applyTileset(parsed.tilesetIdx);
     if ($('tileset')) $('tileset').value = parsed.tilesetIdx;
@@ -987,6 +993,10 @@ async function loadHeightmapFile(f) {
         state.markers = parsed.markers;
         state.track   = parsed.track;
         state.mapMeta = parsed.map;
+        if (parsed.tilesetWarning) {
+          console.warn(`[level-editor] Unknown tileset "${parsed.tilesetWarning}" in sidecar JSON. Falling back to "island".`);
+          showToast(`Tileset "${parsed.tilesetWarning}" not found. Using default (island).`, 'warn');
+        }
         if (parsed.tilesetIdx != null) {
           await applyTileset(parsed.tilesetIdx);
           if ($('tileset')) $('tileset').value = parsed.tilesetIdx;
@@ -1635,6 +1645,29 @@ window.addEventListener('keydown', e => {
 // ───── Misc ─────
 
 function status(msg) { $('status').textContent = msg; }
+
+// Lightweight toast for non-blocking warnings (e.g. unknown tileset on load).
+// Stacks vertically; each toast auto-dismisses after a few seconds, and the
+// container is created lazily so older HTML without it still works.
+function showToast(msg, kind = 'warn') {
+  let host = document.getElementById('toastHost');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'toastHost';
+    document.body.appendChild(host);
+  }
+  const t = document.createElement('div');
+  t.className = `toast toast-${kind}`;
+  t.textContent = msg;
+  host.appendChild(t);
+  // Force reflow so the CSS transition runs from the initial state.
+  void t.offsetWidth;
+  t.classList.add('toast-visible');
+  setTimeout(() => {
+    t.classList.remove('toast-visible');
+    setTimeout(() => t.remove(), 300);
+  }, 5000);
+}
 function updateTitle() {
   const name = state.filePath || 'untitled';
   const dirty = state.dirty || state.heightmap?.dirty;

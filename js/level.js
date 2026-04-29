@@ -39,15 +39,29 @@ function base64ToBytes(s) {
   return out;
 }
 
+// Editor tileset index, kept in sync with maps.js TILESETS array order.
+//   0 = island (default), 1 = desert, 2 = arctic.
+// The game's heightmap loader reads Map.tileset directly, so adding new
+// kinds here means adding the matching string here AND in heightmap.lua.
+const TILESET_NAMES = ['island', 'desert', 'arctic'];
+
+function tilesetNameFromIdx(idx) {
+  return TILESET_NAMES[idx] ?? 'island';
+}
+
+function tilesetIdxFromName(name) {
+  const i = TILESET_NAMES.indexOf(name);
+  return i >= 0 ? i : -1;
+}
+
 // Derive the JSON's Map.terrain field from the editor's live tileset + thresholds.
-// The game's heightmap loader treats a non-null `terrain` as "desert tileset" —
-// so we only write a terrain object when the desert tileset is selected, and
-// leave it null for the default island tileset. (Matches existing game logic.)
+// The game's heightmap loader uses the explicit Map.tileset string; the terrain
+// block is what carries the custom ground_to_mid / mid_to_high thresholds for
+// desert and arctic. Island maps don't need it, so we leave it null there.
 function buildTerrainField(terrain, tilesetIdx) {
-  // tilesetIdx 0 = island (default), 1 = desert.
-  if (tilesetIdx !== 1) return null;
+  if (tilesetIdx !== 1 && tilesetIdx !== 2) return null;
   return {
-    tileset:          'desert',
+    tileset:          tilesetNameFromIdx(tilesetIdx),
     ground_to_mid:    terrain?.lowToMid  ?? 8,
     mid_to_high:      terrain?.midToHigh ?? 27,
     ground_mid_blend: 2,
@@ -63,7 +77,7 @@ export function buildLevelJson({ heightmap, markers, track, terrain, mapMeta, ti
       width:          heightmap.width,
       height:         heightmap.height,
       heightmap_b64:  bytesToBase64(heightmap.data),
-      tileset:        (tilesetIdx === 1) ? 'desert' : 'island',
+      tileset:        tilesetNameFromIdx(tilesetIdx),
       has_water:      mapMeta?.has_water ?? !!terrain?.hasWater,
       has_grass:      mapMeta?.has_grass ?? true,
       spawn_aseprite: mapMeta?.spawn_aseprite ?? [
@@ -128,10 +142,20 @@ export function parseLevelJson(text) {
   }
 
   // Resolve tilesetIdx from the JSON:
-  //   - Explicit Map.tileset = "desert" / "island" wins (new maps).
-  //   - Otherwise infer from presence of Map.terrain (legacy maps).
-  let tilesetIdx = 0;  // island
-  if (m.tileset === 'desert' || (m.terrain && (m.terrain.tileset === 'desert' || m.terrain.ground_to_mid !== undefined))) {
+  //   - Explicit Map.tileset = "island"/"desert"/"arctic" wins (new maps).
+  //   - Otherwise infer from presence of Map.terrain (legacy maps imply desert).
+  //   - Unknown strings fall back to island and surface a warning so the
+  //     caller can toast the user.
+  let tilesetIdx = 0;
+  let tilesetWarning = null;
+  if (typeof m.tileset === 'string' && m.tileset.length > 0) {
+    const idx = tilesetIdxFromName(m.tileset);
+    if (idx >= 0) {
+      tilesetIdx = idx;
+    } else {
+      tilesetWarning = m.tileset;
+    }
+  } else if (m.terrain && (m.terrain.tileset === 'desert' || m.terrain.ground_to_mid !== undefined)) {
     tilesetIdx = 1;
   }
 
@@ -142,7 +166,7 @@ export function parseLevelJson(text) {
       width:                 m.width ?? 128,
       height:                m.height ?? 128,
       heightmap_bytes:       heightmapBytes,  // Uint8Array or null
-      tileset:               m.tileset ?? (tilesetIdx === 1 ? 'desert' : 'island'),
+      tileset:               m.tileset ?? tilesetNameFromIdx(tilesetIdx),
       has_water:             m.has_water !== false,
       has_grass:             m.has_grass !== false,
       spawn_aseprite:        m.spawn_aseprite ?? [64, 64],
@@ -153,7 +177,8 @@ export function parseLevelJson(text) {
       altitude_warning_time: m.altitude_warning_time ?? null,
       clamp_edges:           m.clamp_edges ?? null,
     },
-    tilesetIdx,   // 0 = island, 1 = desert (editor convention)
+    tilesetIdx,        // 0 = island, 1 = desert, 2 = arctic
+    tilesetWarning,    // string of the unrecognized tileset name, or null
     track,
     markers,
   };
