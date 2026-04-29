@@ -505,16 +505,34 @@ async function applyTileset(idx) {
 
 async function loadTerrainTextures() {
   const t = state.terrain;
-  const tryLoad = async (path) => {
+  // Log which roots/paths the loader actually tries so missing textures
+  // (e.g. on a new tileset) surface in the console instead of silently
+  // showing blank preview swatches.
+  const tryLoad = async (path, label) => {
     const roots = uniqueRoots(state.gameRoot, './');
+    const tried = [];
     for (const r of roots) {
-      try { return await loadImage(r + path); } catch { /* try next root */ }
+      const url = r + path;
+      tried.push(url);
+      try { return await loadImage(url); } catch { /* try next root */ }
     }
+    console.warn(`[level-editor] Texture "${label}" not found at any of: ${tried.join(', ')}`);
     return null;
   };
   const [low, mid, high, water] = await Promise.all([
-    tryLoad(t.lowTex), tryLoad(t.midTex), tryLoad(t.highTex), tryLoad(t.waterTex),
+    tryLoad(t.lowTex,   'low'),
+    tryLoad(t.midTex,   'mid'),
+    tryLoad(t.highTex,  'high'),
+    tryLoad(t.waterTex, 'water'),
   ]);
+  const missing = [];
+  if (!low)   missing.push('low');
+  if (!mid)   missing.push('mid');
+  if (!high)  missing.push('high');
+  if (t.hasWater && !water) missing.push('water');
+  if (missing.length > 0) {
+    showToast(`Tileset "${t.name}" missing textures: ${missing.join(', ')}. See console for tried paths.`, 'warn');
+  }
   view2d.setTextures({ low, mid, high, water });
   view3d.setTextureImages({ low, mid, high, water });
   drawTexPreview('texLow', low);
